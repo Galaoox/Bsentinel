@@ -39,7 +39,8 @@ Este proyecto desarrolla un servicio de web scraping para rastrear precios de li
 - ✅ **Completado**: Lenguaje: Python 3.9+
 - ✅ **Completado**: Framework API: FastAPI + Pydantic
 - ✅ **Completado**: Framework Scraping: Scrapy
-- ✅ **Completado**: Base de Datos: PostgreSQL
+- ✅ **Completado**: Base de Datos: PostgreSQL (Docker para desarrollo local)
+- ✅ **Completado**: Contenedorización: Docker + docker-compose
 - ✅ **Completado**: Gestión de Proxies: scrapy-rotating-proxies
 - ✅ **Completado**: Rotación User-Agents: Middleware Scrapy
 
@@ -69,8 +70,9 @@ Este proyecto desarrolla un servicio de web scraping para rastrear precios de li
 - [ ] Inicializar repositorio Git
 - [ ] Configurar entorno virtual Python
 - [ ] Instalar dependencias iniciales (FastAPI, Scrapy, SQLAlchemy, etc.)
-- [ ] Configurar PostgreSQL local
+- [ ] Configurar PostgreSQL con Docker (docker-compose.yml)
 - [ ] Crear estructura de directorios del proyecto
+- [ ] Configurar Docker para desarrollo local
 
 #### Fase 2: Implementación de la Base de Datos
 
@@ -120,10 +122,10 @@ Este proyecto desarrolla un servicio de web scraping para rastrear precios de li
 
 #### Fase 8: Despliegue y Monitoreo
 
-- [ ] Configurar Docker
-- [ ] Implementar CI/CD básico
+- [ ] Configurar Docker completo (app + BD + Redis)
+- [ ] Implementar docker-compose para desarrollo y producción
+- [ ] Implementar CI/CD básico con GitHub Actions
 - [ ] Configurar logging centralizado
-- [ ] Implementar métricas y alertas
 
 ### 📈 Métricas de Progreso
 
@@ -168,6 +170,7 @@ Este proyecto desarrolla un servicio de web scraping para rastrear precios de li
 - Arquitectura modular facilita extensiones futuras
 - Políticas de datos claras definidas desde el inicio
 - **Metodología TDD**: Desarrollo guiado por tests para asegurar calidad y mantenibilidad
+- **Contenedorización**: Docker para BD local y despliegue completo
 - Features Gherkin servirán como base para tests de aceptación automatizados
 
 ---
