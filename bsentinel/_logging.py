@@ -1,3 +1,5 @@
+"""Configuración de logging para bsentinel."""
+
 import logging
 import logging.config
 
@@ -33,14 +35,21 @@ config = {
         "uvicorn": {
             "propagate": True,
         },
-        # "uvicorn.access": {
-        #     "level": "WARNING",
-        # },
+        "sqlalchemy.engine": {
+            "level": "WARNING",
+        },
+        "scrapy": {
+            "level": "INFO",
+        },
     },
 }
 
 
-def configure_logging():
+def configure_logging() -> None:
+    """Configura el sistema de logging de la aplicación."""
     logging.config.dictConfig(config)
     logger = logging.getLogger(__name__)
-    logger.info(f"Logging configured with APP_ENVIRONMENT={settings.app_environment}")
+    logger.info(
+        f"Logging configured with APP_ENVIRONMENT={settings.app_environment}, "
+        f"LOG_LEVEL={settings.log_level}"
+    )

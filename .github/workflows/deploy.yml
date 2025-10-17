@@ -1,0 +1,30 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production image
+        run: |
+          docker build -t bsentinel:production --target production .
+
+      - name: Run production tests
+        run: |
+          echo "Production deployment would happen here"
+          echo "Configure your production deployment strategy"
+
+      # TODO: Configurar despliegue según infraestructura
+      # Ejemplo: AWS ECS, Kubernetes, etc.
