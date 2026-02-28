@@ -9,7 +9,7 @@
   - `bsentinel/infrastructure/api/`: app bootstrap, routers (`/health`, `/api/v1/...`).
 - Config/environment: `bsentinel/_settings.py`, `bsentinel/settings/`.
 - Tests: `tests/unit/` and `tests/integration/`.
-- Product specs/docs: `docs/` and `docs/features/`.
+- Product specs/docs: `docs/`, `docs/features/mvp/`, and `docs/features/roadmap/`.
 
 ## Architecture Quick Map (Where Things Go)
 - Put **business decisions** in `domain/`.

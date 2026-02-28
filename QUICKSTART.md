@@ -1,120 +1,75 @@
-# 🚀 Guía de Inicio Rápido - Bsentinel
+# Guía de Inicio Rápido - Bsentinel (MVP)
 
-Esta guía te ayudará a poner en marcha el proyecto en menos de 5 minutos.
+Esta guía arranca la API MVP localmente y valida los endpoints principales.
 
-## ✅ Prerrequisitos
+## Prerrequisitos
 
-1. **Python 3.12+** instalado
-2. **Docker Desktop** instalado y en ejecución
-3. **Git** instalado
-4. **Windows** como sistema operativo
+1. Python 3.12+
+2. Git
+3. Entorno virtual `.venv` (si no existe, créalo)
+4. `uv` opcional (recomendado)
 
-## 📦 Paso 1: Instalar uv
-
-Abre PowerShell y ejecuta:
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Cierra y vuelve a abrir PowerShell para que los cambios surtan efecto.
-
-## 🔧 Paso 2: Configurar el proyecto
+## 1) Preparar entorno
 
 ```bash
-# 1. Navegar al directorio del proyecto
-cd book_tracker_backend
-
-# 2. Instalar dependencias
+# desde la raíz del repositorio
 uv sync
-
-# 3. Copiar archivo de configuración
-copy secrets\.env.example secrets\.env
 ```
 
-## 🐳 Paso 3: Iniciar PostgreSQL
+Si `uv` no está disponible, usa el entorno virtual existente para ejecutar comandos.
 
-```bash
-docker-compose up postgres -d
-```
+## 2) Ejecutar la API
 
-Espera unos segundos hasta que PostgreSQL esté listo (verifica con `docker-compose ps`).
-
-## 🚀 Paso 4: Ejecutar la aplicación
-
-### Opción A: Con uv (Recomendado para desarrollo)
+Opción recomendada:
 
 ```bash
 uv run python -m bsentinel.infrastructure.api
 ```
 
-### Opción B: Con Docker (Todo en contenedores)
+Fallback:
 
 ```bash
-docker-compose up
+.venv/bin/python -m bsentinel.infrastructure.api
 ```
 
-## ✨ Paso 5: Verificar que funciona
+## 3) Verificar servicio
 
-Abre tu navegador en:
+- Health: `http://localhost:8000/health`
+- Swagger: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
-- **API Health Check**: http://localhost:8000/health
-- **Documentación Swagger**: http://localhost:8000/docs
-- **Documentación ReDoc**: http://localhost:8000/redoc
+## 4) Ejecutar pruebas
 
-Si ves la documentación de la API, ¡felicidades! 🎉
-
-## 🧪 Ejecutar Tests (Opcional)
+Comando principal:
 
 ```bash
-# Ejecutar tests
-uv run pytest
-
-# Con cobertura
-uv run pytest --cov=bsentinel
+uv run pytest -q
 ```
 
-## 🛑 Detener los servicios
+Fallback:
 
 ```bash
-# Detener solo PostgreSQL
-docker-compose down
-
-# O si usaste docker-compose up para todo
-docker-compose down
+.venv/bin/python -m pytest -q
 ```
 
-## 📝 Próximos Pasos
+## 5) Qué está implementado hoy
 
-- Lee el archivo [PROGRESS.md](PROGRESS.md) para ver el estado del proyecto
-- Revisa [docs/features/](docs/features/) para entender las funcionalidades planificadas
-- La **Fase 1** está completa ✅
-- La **Fase 2** (Base de Datos) es el siguiente paso
+- API v1 para libros, historial y retención en `/api/v1/...`
+- Scheduler local
+- Integración básica con OpenLibrary
+- Persistencia en memoria (no durable)
 
-## ❓ Problemas Comunes
+## Solución de problemas común
 
-### Error: "uv: command not found"
-- Cierra y vuelve a abrir la terminal después de instalar uv
+### `uv: command not found`
+Usa el fallback con `.venv/bin/python` o instala `uv` y reinicia la terminal.
 
-### Error: "Cannot connect to Docker daemon"
-- Asegúrate de que Docker Desktop está en ejecución
+### Puerto `8000` ocupado
+Ajusta `PORT` en configuración/entorno o detén el proceso que usa ese puerto.
 
-### Error: "Port 5432 already in use"
-- Ya tienes PostgreSQL corriendo localmente
-- Opción 1: Detén tu PostgreSQL local
-- Opción 2: Cambia el puerto en `docker-compose.yml` y `secrets/.env`
+## Documentación relacionada
 
-### Error: "Port 8000 already in use"
-- Ya tienes algo corriendo en el puerto 8000
-- Cambia el puerto en `secrets/.env` (variable `PORT`)
-
-## 📞 Soporte
-
-Si encuentras problemas, revisa:
-1. Los logs de Docker: `docker-compose logs`
-2. Los logs de la aplicación en la terminal
-3. El archivo [PROGRESS.md](PROGRESS.md) para el estado actual
-
----
-
-**¡Disfruta desarrollando con Bsentinel! 📚✨**
+- Estado del proyecto: `PROGRESS.md`
+- Features MVP: `docs/features/mvp/`
+- Features roadmap: `docs/features/roadmap/`
+- Contexto acumulado de sesiones: `context.md`

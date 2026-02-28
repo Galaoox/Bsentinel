@@ -79,3 +79,12 @@ Fallback en entorno local con venv:
 - Persistencia en memoria (los datos se reinician al reiniciar el proceso).
 - Integración OpenLibrary simplificada (best-effort).
 - En este entorno, `uv run` puede requerir configuración explícita de `PYTHONPATH` y `--python`.
+
+## Documentación 📚
+
+- Estado actual del proyecto: `PROGRESS.md`
+- Ejecución rápida MVP: `QUICKSTART.md`
+- Índice de docs: `docs/README.md`
+- Features implementados: `docs/features/mvp/`
+- Features de roadmap: `docs/features/roadmap/`
+- Histórico de diseño: `docs/archive/first_idea.md`

@@ -175,3 +175,33 @@ Append a new section at the end using this template:
 ## Open Constraints
 - `uv run` in this environment may require `PYTHONPATH` and explicit `--python` selection.
 - Packaging discovery can fail in editable mode due to flat-layout multiple top-level package detection.
+
+## Session 2026-02-28 17:10 (UTC)
+- Objective: Align project documentation with the implemented MVP status and separate roadmap from active behavior docs.
+- Scope: Documentation restructure (`docs/` tree), `PROGRESS.md` rewrite, `QUICKSTART.md` alignment, and cross-link updates.
+- Technical decisions:
+  - Treat legacy idea/spec docs as historical artifacts.
+  - Split feature docs into `docs/features/mvp/` (implemented) and `docs/features/roadmap/` (future scope).
+  - Keep operational docs in Spanish while preserving `context.md` in English.
+- Sources consulted (Context7 / official docs):
+  - Not required (internal documentation alignment task).
+- Files changed:
+  - `PROGRESS.md`
+  - `QUICKSTART.md`
+  - `Readme.md`
+  - `AGENTS.md`
+  - `docs/README.md`
+  - `docs/FASE_1_COMPLETADA.md`
+  - `docs/archive/first_idea.md` (moved)
+  - `docs/features/mvp/api_v1_mvp.feature` (new)
+  - `docs/features/roadmap/*.feature` (moved)
+- Verification commands:
+  - Repository/document search checks for endpoint and path consistency.
+  - File tree checks for docs relocation.
+- Results:
+  - Documentation now reflects the real MVP scope and explicitly separates future roadmap items.
+- Risks / technical debt:
+  - Roadmap feature files still contain older endpoint conventions by design; they are intentionally isolated from MVP docs.
+- Next steps:
+  - Keep promoting scenarios from `roadmap` to `mvp` as implementation advances.
+  - Update `Readme.md` and `context.md` after each implementation session.
