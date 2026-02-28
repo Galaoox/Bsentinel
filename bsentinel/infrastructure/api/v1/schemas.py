@@ -7,7 +7,6 @@ class CreateBookRequest(BaseModel):
     url: str = Field(min_length=10)
 
 
-class ArchiveJobRequest(BaseModel):
-    target: str = "price_history"
+class CreateArchiveJobRequest(BaseModel):
     older_than_days: int = Field(default=365, ge=1)
     min_active_records_per_book: int = Field(default=1000, ge=1)

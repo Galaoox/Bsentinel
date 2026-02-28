@@ -4,7 +4,7 @@ def test_openapi_declares_expected_tags_metadata(client):
     payload = response.json()
 
     tag_names = [tag["name"] for tag in payload.get("tags", [])]
-    assert tag_names == ["Root", "Health", "system", "books", "history", "retention"]
+    assert tag_names == ["Root", "Health", "system", "catalog", "pricing", "retention"]
 
 
 def test_openapi_v1_operations_do_not_include_version_tag(client):
@@ -27,7 +27,7 @@ def test_openapi_groups_v1_endpoints_by_controller_tags(client):
     payload = response.json()
     paths = payload["paths"]
 
-    assert paths["/api/v1/info"]["get"]["tags"] == ["system"]
-    assert paths["/api/v1/books"]["post"]["tags"] == ["books"]
-    assert paths["/api/v1/books/{book_id}/history"]["get"]["tags"] == ["history"]
-    assert paths["/api/v1/retention/archive-jobs"]["post"]["tags"] == ["retention"]
+    assert paths["/api/v1/system/info"]["get"]["tags"] == ["system"]
+    assert paths["/api/v1/catalog/books"]["post"]["tags"] == ["catalog"]
+    assert paths["/api/v1/pricing/books/{book_id}/history"]["get"]["tags"] == ["pricing"]
+    assert paths["/api/v1/retention/jobs/archive"]["post"]["tags"] == ["retention"]

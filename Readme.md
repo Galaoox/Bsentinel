@@ -21,24 +21,27 @@ Estructura por capas (estilo hexagonal):
 - `bsentinel/domain/`: entidades y reglas de negocio puras
 - `bsentinel/application/`: casos de uso y orquestación
 - `bsentinel/infrastructure/`: API, scheduler, scraping y cliente OpenLibrary
-- `bsentinel/infrastructure/api/v1/`: rutas separadas por controlador (`system`, `books`, `history`, `retention`)
+- `bsentinel/infrastructure/api/v1/`: rutas separadas por controlador (`system`, `catalog`, `pricing`, `retention`)
 - `tests/unit` y `tests/integration`: pruebas por nivel
 
-Swagger organiza ahora las rutas de `v1` por controlador/tag, evitando el agrupado único por versión.
+Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único por versión.
 
 ## Endpoints MVP 🔌
 
 - `GET /health`
-- `GET /api/v1/info`
-- `POST /api/v1/books`
-- `GET /api/v1/books`
-- `GET /api/v1/books/{book_id}`
-- `DELETE /api/v1/books/{book_id}`
-- `POST /api/v1/books/{book_id}/restore`
-- `GET /api/v1/books/{book_id}/history`
-- `GET /api/v1/books/{book_id}/price-comparison`
-- `POST /api/v1/retention/archive-jobs`
-- `GET /api/v1/retention/archive-jobs/{job_id}`
+- `GET /api/v1/system/info`
+- `POST /api/v1/catalog/books`
+- `GET /api/v1/catalog/books`
+- `GET /api/v1/catalog/books/{book_id}`
+- `DELETE /api/v1/catalog/books/{book_id}`
+- `POST /api/v1/catalog/books/{book_id}/restore`
+- `GET /api/v1/pricing/books/{book_id}/history`
+- `GET /api/v1/pricing/books/{book_id}/comparison`
+- `POST /api/v1/retention/jobs/archive`
+- `GET /api/v1/retention/jobs/archive/{job_id}`
+
+Nota de contrato de errores v1:
+- Respuesta estándar: `error.code`, `error.message`, `error.details` y `request_id`.
 
 ## Ejecución local ▶️
 

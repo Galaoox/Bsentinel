@@ -205,3 +205,52 @@ Append a new section at the end using this template:
 - Next steps:
   - Keep promoting scenarios from `roadmap` to `mvp` as implementation advances.
   - Update `Readme.md` and `context.md` after each implementation session.
+
+## Session 2026-02-28 18:20 (UTC)
+- Objective: Decouple monolithic application service/repository responsibilities and refactor API v1 controllers/routes.
+- Scope: Hexagonal-style split of `application`, in-memory persistence adapters in `infrastructure`, API v1 route redesign, error contract unification, scheduler wiring update, and unit/integration test adjustments.
+- Technical decisions:
+  - Replaced monolithic `BookService` with focused services: `CatalogCommandService`, `CatalogQueryService`, `ScrapingService`, `PricingQueryService`, `RetentionService`, and `SystemQueryService`.
+  - Introduced repository and external ports under `application/ports` and moved in-memory implementations to `infrastructure/persistence/in_memory`.
+  - Applied direct-breaking API path migration from old `/api/v1/books...` style to `/api/v1/catalog...`, `/api/v1/pricing...`, and `/api/v1/retention/jobs/archive...`.
+  - Standardized API error payload to `error.code`, `error.message`, `error.details`, and `request_id`.
+  - Added compatibility alias `StandardException = StandardError` during exception naming cleanup.
+- Sources consulted (Context7 / official docs):
+  - Internal repository analysis and existing project conventions.
+- Files changed:
+  - `bsentinel/application/__init__.py`
+  - `bsentinel/application/ports/*`
+  - `bsentinel/application/services/*`
+  - `bsentinel/application/repository.py` (deleted)
+  - `bsentinel/application/services.py` (deleted)
+  - `bsentinel/infrastructure/persistence/in_memory/*`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/router.py`
+  - `bsentinel/infrastructure/api/v1/system.py`
+  - `bsentinel/infrastructure/api/v1/catalog.py` (new)
+  - `bsentinel/infrastructure/api/v1/pricing.py` (new)
+  - `bsentinel/infrastructure/api/v1/retention.py`
+  - `bsentinel/infrastructure/api/v1/schemas.py`
+  - `bsentinel/infrastructure/api/v1/books.py` (deleted)
+  - `bsentinel/infrastructure/api/v1/history.py` (deleted)
+  - `bsentinel/infrastructure/scheduler/service.py`
+  - `bsentinel/exceptions.py`
+  - `tests/conftest.py`
+  - `tests/integration/api/test_mvp_api.py`
+  - `tests/integration/api/test_openapi_schema.py`
+  - `tests/unit/api/test_root_app_unit.py`
+  - `tests/unit/application/test_catalog_services.py` (new)
+  - `tests/unit/application/test_retention_service.py` (new)
+  - `Readme.md`
+- Verification commands:
+  - `uv run ruff check .`
+  - `uv run pytest -q`
+- Results:
+  - Lint passed.
+  - Test suite passed: `20 passed in 2.23s`.
+- Risks / technical debt:
+  - `pyproject.toml` still uses deprecated `tool.uv.dev-dependencies`; should migrate to `dependency-groups.dev`.
+  - API paths changed and require client updates for compatibility.
+- Next steps:
+  - Update API consumers to new `/api/v1/system|catalog|pricing|retention` routes.
+  - Migrate UV dev dependency configuration to avoid deprecation warnings.

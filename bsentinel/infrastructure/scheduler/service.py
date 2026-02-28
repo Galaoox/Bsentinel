@@ -7,13 +7,13 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from bsentinel.application.services import BookService
+from bsentinel.application.services import ScrapingService
 
 logger = logging.getLogger(__name__)
 
 
 class LocalScheduler:
-    def __init__(self, service: BookService) -> None:
+    def __init__(self, service: ScrapingService) -> None:
         self.service = service
         self.scheduler = AsyncIOScheduler()
 

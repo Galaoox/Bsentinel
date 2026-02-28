@@ -1,4 +1,19 @@
-from .repository import InMemoryRepository
-from .services import BookService
+"""Application layer exports."""
 
-__all__ = ["InMemoryRepository", "BookService"]
+from .services import (
+    CatalogCommandService,
+    CatalogQueryService,
+    PricingQueryService,
+    RetentionService,
+    ScrapingService,
+    SystemQueryService,
+)
+
+__all__ = [
+    "CatalogCommandService",
+    "CatalogQueryService",
+    "PricingQueryService",
+    "RetentionService",
+    "ScrapingService",
+    "SystemQueryService",
+]

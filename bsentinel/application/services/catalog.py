@@ -1,0 +1,198 @@
+"""Catalog application services."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from math import ceil
+from urllib.parse import urlparse
+from uuid import UUID
+
+from bsentinel.application.ports import (
+    BookRepositoryPort,
+    MetadataProviderPort,
+    RelationRepositoryPort,
+    StoreRepositoryPort,
+)
+from bsentinel.domain.models import Book, BookStoreRelation
+from bsentinel.exceptions import (
+    EntityAlreadyExistsError,
+    EntityDoesNotExistError,
+    UnsupportedStoreError,
+    ValidationError,
+)
+
+from ._identity import extract_book_identity
+
+BUSCALIBRE_DOMAINS = {"www.buscalibre.com.co", "buscalibre.com.co"}
+
+
+class CatalogCommandService:
+    def __init__(
+        self,
+        *,
+        books: BookRepositoryPort,
+        stores: StoreRepositoryPort,
+        relations: RelationRepositoryPort,
+        metadata: MetadataProviderPort,
+    ) -> None:
+        self.books = books
+        self.stores = stores
+        self.relations = relations
+        self.metadata = metadata
+
+    async def create_book_from_url(self, product_url: str) -> tuple[Book, BookStoreRelation]:
+        parsed = urlparse(product_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValidationError("Invalid URL")
+
+        domain = parsed.netloc.lower()
+        if domain not in BUSCALIBRE_DOMAINS:
+            raise UnsupportedStoreError("Unsupported store")
+
+        if self.books.get_by_source_url(product_url):
+            raise EntityAlreadyExistsError("Book already exists")
+
+        store = self.stores.get_by_domain("www.buscalibre.com.co")
+        if not store or not store.is_active:
+            raise UnsupportedStoreError("Unsupported store")
+
+        title, authors, isbn = extract_book_identity(product_url)
+        book = Book(title=title, authors=authors, isbn=isbn, source_url=product_url)
+
+        if isbn:
+            metadata = await self.metadata.enrich_by_isbn(isbn)
+            if metadata:
+                book.publisher = metadata.get("publisher")
+                book.publication_year = metadata.get("publication_year")
+                book.language = metadata.get("language")
+                book.pages = metadata.get("pages")
+                book.description = metadata.get("description")
+                book.image_url = metadata.get("image_url")
+                book.categories = metadata.get("categories") or []
+
+        self.books.add(book)
+        relation = BookStoreRelation(book_id=book.id, store_id=store.id, product_url=product_url)
+        self.relations.add(relation)
+        return book, relation
+
+    def delete_book(self, book_id: UUID) -> None:
+        book = self.books.get(book_id)
+        if not book:
+            raise EntityDoesNotExistError("Book not found")
+        book.is_deleted = True
+        book.deleted_at = datetime.now(UTC)
+
+    def restore_book(self, book_id: UUID) -> dict:
+        book = self.books.get(book_id)
+        if not book:
+            raise EntityDoesNotExistError("Book not found")
+        if not book.is_deleted:
+            raise ValidationError("Book is not deleted")
+
+        book.is_deleted = False
+        book.deleted_at = None
+        return {"book_id": str(book.id), "is_deleted": book.is_deleted, "deleted_at": book.deleted_at}
+
+
+class CatalogQueryService:
+    def __init__(
+        self,
+        *,
+        books: BookRepositoryPort,
+        stores: StoreRepositoryPort,
+        relations: RelationRepositoryPort,
+    ) -> None:
+        self.books = books
+        self.stores = stores
+        self.relations = relations
+
+    def list_books(
+        self,
+        *,
+        include_deleted: bool,
+        q: str | None,
+        isbn: str | None,
+        author: str | None,
+        category: str | None,
+        page: int,
+        limit: int,
+    ) -> dict:
+        books = self.books.list(include_deleted=include_deleted)
+
+        if q:
+            term = q.lower()
+            books = [b for b in books if term in b.title.lower()]
+        if isbn:
+            books = [b for b in books if b.isbn == isbn]
+        if author:
+            term = author.lower()
+            books = [b for b in books if any(term in a.lower() for a in b.authors)]
+        if category:
+            term = category.lower()
+            books = [b for b in books if any(term in c.lower() for c in b.categories)]
+
+        total = len(books)
+        start = (page - 1) * limit
+        paginated = books[start : start + limit]
+
+        items = []
+        for book in paginated:
+            rels = self.relations.list_for_book(book.id)
+            relation = rels[0] if rels else None
+            items.append(
+                {
+                    "book_id": str(book.id),
+                    "title": book.title,
+                    "authors": book.authors,
+                    "isbn": book.isbn,
+                    "is_deleted": book.is_deleted,
+                    "current_price": relation.current_price if relation else None,
+                    "status": relation.status if relation else "desconocido",
+                }
+            )
+
+        return {
+            "items": items,
+            "meta": {
+                "total": total,
+                "page": page,
+                "limit": limit,
+                "pages": ceil(total / limit) if total else 0,
+            },
+        }
+
+    def get_book_detail(self, book_id: UUID) -> dict:
+        book = self.books.get(book_id)
+        if not book:
+            raise EntityDoesNotExistError("Book not found")
+
+        stores = []
+        for rel in self.relations.list_for_book(book.id):
+            store = self.stores.get(rel.store_id)
+            stores.append(
+                {
+                    "domain": store.domain if store else "unknown",
+                    "price": rel.current_price,
+                    "status": rel.status,
+                    "last_checked": rel.last_checked,
+                }
+            )
+
+        return {
+            "book_id": str(book.id),
+            "title": book.title,
+            "authors": book.authors,
+            "isbn": book.isbn,
+            "is_deleted": book.is_deleted,
+            "deleted_at": book.deleted_at,
+            "openlibrary": {
+                "publisher": book.publisher,
+                "publication_year": book.publication_year,
+                "language": book.language,
+                "pages": book.pages,
+                "description": book.description,
+                "image_url": book.image_url,
+                "categories": book.categories,
+            },
+            "stores": stores,
+        }

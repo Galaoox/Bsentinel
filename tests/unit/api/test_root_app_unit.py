@@ -21,9 +21,11 @@ async def test_root_function_returns_expected_payload():
 
 
 @pytest.mark.asyncio
-async def test_global_exception_handler_returns_500_with_request_id():
+async def test_global_exception_handler_returns_500_with_request_id_and_error_contract():
     request = SimpleNamespace(state=SimpleNamespace(request_id="abc-123"))
     response = await global_exception_handler(request, Exception("boom"))
     assert response.status_code == 500
     body = json.loads(response.body.decode("utf-8"))
     assert body["request_id"] == "abc-123"
+    assert body["error"]["code"] == "INTERNAL_SERVER_ERROR"
+    assert body["error"]["message"] == "Internal server error"
