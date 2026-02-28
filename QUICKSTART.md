@@ -1,120 +1,102 @@
-# 🚀 Guía de Inicio Rápido - Bsentinel
+# Guía de Inicio Rápido - Bsentinel (MVP)
 
-Esta guía te ayudará a poner en marcha el proyecto en menos de 5 minutos.
+Esta guía arranca la API MVP localmente y valida los endpoints principales.
 
-## ✅ Prerrequisitos
+## Prerrequisitos
 
-1. **Python 3.12+** instalado
-2. **Docker Desktop** instalado y en ejecución
-3. **Git** instalado
-4. **Windows** como sistema operativo
+1. Python 3.12+
+2. Git
+3. Entorno virtual `.venv` (si no existe, créalo)
+4. `uv` opcional (recomendado)
+5. PostgreSQL local (si usarás `DATABASE_URL` por defecto)
 
-## 📦 Paso 1: Instalar uv
-
-Abre PowerShell y ejecuta:
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Cierra y vuelve a abrir PowerShell para que los cambios surtan efecto.
-
-## 🔧 Paso 2: Configurar el proyecto
+## 1) Preparar entorno
 
 ```bash
-# 1. Navegar al directorio del proyecto
-cd book_tracker_backend
-
-# 2. Instalar dependencias
+# desde la raíz del repositorio
 uv sync
-
-# 3. Copiar archivo de configuración
-copy secrets\.env.example secrets\.env
 ```
 
-## 🐳 Paso 3: Iniciar PostgreSQL
+Si `uv` no está disponible, usa el entorno virtual existente para ejecutar comandos.
+
+## 2) Configurar persistencia
+
+Por defecto se usa backend SQL (`PERSISTENCE_BACKEND=sql`).
+
+Aplicar migraciones:
 
 ```bash
-docker-compose up postgres -d
+uv run alembic upgrade head
 ```
 
-Espera unos segundos hasta que PostgreSQL esté listo (verifica con `docker-compose ps`).
+Si deseas usar persistencia en memoria temporalmente:
 
-## 🚀 Paso 4: Ejecutar la aplicación
+```bash
+export PERSISTENCE_BACKEND=in_memory
+```
 
-### Opción A: Con uv (Recomendado para desarrollo)
+## 3) Ejecutar la API
+
+Opción recomendada:
 
 ```bash
 uv run python -m bsentinel.infrastructure.api
 ```
 
-### Opción B: Con Docker (Todo en contenedores)
+Fallback:
 
 ```bash
-docker-compose up
+.venv/bin/python -m bsentinel.infrastructure.api
 ```
 
-## ✨ Paso 5: Verificar que funciona
+## 4) Verificar servicio
 
-Abre tu navegador en:
+- Health: `http://localhost:8000/health`
+- Swagger: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
-- **API Health Check**: http://localhost:8000/health
-- **Documentación Swagger**: http://localhost:8000/docs
-- **Documentación ReDoc**: http://localhost:8000/redoc
+## 5) Ejecutar pruebas
 
-Si ves la documentación de la API, ¡felicidades! 🎉
-
-## 🧪 Ejecutar Tests (Opcional)
+Comando principal:
 
 ```bash
-# Ejecutar tests
-uv run pytest
-
-# Con cobertura
-uv run pytest --cov=bsentinel
+uv run pytest -q
 ```
 
-## 🛑 Detener los servicios
+Lint:
 
 ```bash
-# Detener solo PostgreSQL
-docker-compose down
-
-# O si usaste docker-compose up para todo
-docker-compose down
+uv run ruff check .
 ```
 
-## 📝 Próximos Pasos
+Fallback:
 
-- Lee el archivo [PROGRESS.md](PROGRESS.md) para ver el estado del proyecto
-- Revisa [docs/features/](docs/features/) para entender las funcionalidades planificadas
-- La **Fase 1** está completa ✅
-- La **Fase 2** (Base de Datos) es el siguiente paso
+```bash
+.venv/bin/python -m pytest -q
+```
 
-## ❓ Problemas Comunes
+## 6) Qué está implementado hoy
 
-### Error: "uv: command not found"
-- Cierra y vuelve a abrir la terminal después de instalar uv
+- API v1 (`/api/v1/system|catalog|pricing|retention`)
+- Scheduler local
+- Integración básica con OpenLibrary
+- Persistencia SQLAlchemy + Alembic
+- Seed inicial de tienda Buscalibre CO
 
-### Error: "Cannot connect to Docker daemon"
-- Asegúrate de que Docker Desktop está en ejecución
+## Solución de problemas común
 
-### Error: "Port 5432 already in use"
-- Ya tienes PostgreSQL corriendo localmente
-- Opción 1: Detén tu PostgreSQL local
-- Opción 2: Cambia el puerto en `docker-compose.yml` y `secrets/.env`
+### `uv: command not found`
+Usa el fallback con `.venv/bin/python` o instala `uv` y reinicia la terminal.
 
-### Error: "Port 8000 already in use"
-- Ya tienes algo corriendo en el puerto 8000
-- Cambia el puerto en `secrets/.env` (variable `PORT`)
+### Error de conexión a PostgreSQL
+Verifica `DATABASE_URL`, credenciales y que el servicio esté arriba.
 
-## 📞 Soporte
+### No existen tablas
+Ejecuta: `uv run alembic upgrade head`.
 
-Si encuentras problemas, revisa:
-1. Los logs de Docker: `docker-compose logs`
-2. Los logs de la aplicación en la terminal
-3. El archivo [PROGRESS.md](PROGRESS.md) para el estado actual
+## Documentación relacionada
 
----
-
-**¡Disfruta desarrollando con Bsentinel! 📚✨**
+- Estado del proyecto: `PROGRESS.md`
+- Features MVP: `docs/features/mvp/`
+- Features roadmap: `docs/features/roadmap/`
+- Contexto acumulado de sesiones: `context.md`

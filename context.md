@@ -1,0 +1,309 @@
+# Implementation Context Log
+
+This file preserves accumulated session context to improve technical continuity and traceability.
+
+## How to Log a Session
+Append a new section at the end using this template:
+
+```md
+## Session YYYY-MM-DD HH:MM (UTC)
+- Objective:
+- Scope:
+- Technical decisions:
+- Sources consulted (Context7 / official docs):
+- Files changed:
+- Verification commands:
+- Results:
+- Risks / technical debt:
+- Next steps:
+```
+
+## Session 2026-02-28 00:00 (UTC)
+- Objective: Establish contributor guidelines and session traceability.
+- Scope: Operational documentation (`AGENTS.md`) and implementation logbook (`context.md`).
+- Technical decisions:
+  - Context7 is defined as the primary source for framework/library usage guidance.
+  - Layered architecture guidance is explicitly documented to place responsibilities.
+  - Core principles were fixed: SOLID, GRASP, YAGNI, Clean Code.
+- Sources consulted (Context7 / official docs):
+  - Not applicable (internal documentation update only).
+- Files changed:
+  - `AGENTS.md`
+  - `context.md`
+- Verification commands:
+  - Manual review of markdown content and structure.
+- Results:
+  - Repository guidelines were reinforced and the initial logbook was created.
+- Risks / technical debt:
+  - Session updates may be skipped unless enforced as part of PR workflow.
+- Next steps:
+  - Require `context.md` updates in PRs containing implementation changes.
+
+## Session 2026-02-28 14:30 (UTC)
+- Objective: Deliver the MVP backend baseline defined for this iteration.
+- Scope: API v1 routes, in-memory data flow, scheduler, scraping adapter, OpenLibrary adapter, and exception/config fixes.
+- Technical decisions:
+  - Keep persistence in-memory for local/dev MVP.
+  - Implement `/api/v1` as the active API namespace without auth in this phase.
+  - Use APScheduler local for periodic scraping execution.
+  - Restrict store support to Buscalibre CO in current scope.
+- Sources consulted (Context7 / official docs):
+  - Not used in this implementation block.
+- Files changed:
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1.py`
+  - `bsentinel/application/repository.py`
+  - `bsentinel/application/services.py`
+  - `bsentinel/domain/models.py`
+  - `bsentinel/infrastructure/scheduler/service.py`
+  - `bsentinel/infrastructure/scraping/buscalibre.py`
+  - `bsentinel/infrastructure/openlibrary/client.py`
+  - `bsentinel/exceptions.py`
+  - `bsentinel/_settings.py`
+  - `pyproject.toml`
+  - `Dockerfile`
+- Verification commands:
+  - `python -m compileall -q bsentinel`
+- Results:
+  - MVP service flow and API contract were implemented end-to-end.
+- Risks / technical debt:
+  - No persistent DB yet (in-memory only).
+  - OpenLibrary integration is best-effort and simplified.
+- Next steps:
+  - Replace in-memory repository with SQLAlchemy + migrations.
+
+## Session 2026-02-28 15:20 (UTC)
+- Objective: Add test coverage for MVP behavior and validate runtime paths.
+- Scope: Unit and integration tests for settings, root app, API flow, and archive job endpoints.
+- Technical decisions:
+  - Prioritize critical integration flow over broad non-MVP feature tests.
+  - Keep tests deterministic with local in-memory repository reset fixtures.
+- Sources consulted (Context7 / official docs):
+  - Not used in this testing block.
+- Files changed:
+  - `tests/conftest.py`
+  - `tests/unit/test_settings.py`
+  - `tests/unit/api/test_root_app_unit.py`
+  - `tests/unit/api/test_main_entrypoint.py`
+  - `tests/integration/api/test_mvp_api.py`
+- Verification commands:
+  - `.venv/bin/python -m pytest -q`
+  - `PYTHONPATH=/home/knavishdata/Work/Bsentinel uv run --no-project --python .venv/bin/python pytest -q`
+- Results:
+  - Full suite passed: `13 passed`.
+- Risks / technical debt:
+  - `uv run` requires explicit invocation pattern in this environment.
+- Next steps:
+  - Expand integration tests when DB persistence is introduced.
+
+## Session 2026-02-28 15:50 (UTC)
+- Objective: Integrate all pending repository changes with clean commit boundaries.
+- Scope: Stage and commit feature, tests, and docs using Conventional Commits in English.
+- Technical decisions:
+  - Split changes into three logical commits for easier review and rollback.
+- Sources consulted (Context7 / official docs):
+  - Not applicable (Git integration workflow).
+- Files changed:
+  - All pending MVP code, tests, and docs files.
+- Verification commands:
+  - `git status --short`
+  - `git log --oneline -n 6`
+  - `.venv/bin/python -m pytest -q`
+- Results:
+  - Commits created:
+    - `3734174 feat: implement MVP v1 API flow with in-memory services and scheduler`
+    - `c5b853e test: add unit and integration coverage for MVP API and settings`
+    - `b66506c docs: update contributor guidelines and session context log`
+- Risks / technical debt:
+  - None blocking for current MVP scope.
+- Next steps:
+  - Continue appending session logs after every implementation batch.
+
+## Session 2026-02-28 16:06 (UTC)
+- Objective: Standardize `context.md` in English and capture the latest iteration outcomes.
+- Scope: Documentation-only update to session logging language and content completeness.
+- Technical decisions:
+  - `context.md` must remain English-only from this point forward.
+  - Session entries should include commands and measurable outcomes.
+- Sources consulted (Context7 / official docs):
+  - Not applicable (internal repository documentation update).
+- Files changed:
+  - `context.md`
+- Verification commands:
+  - Manual review of markdown content and chronology.
+- Results:
+  - Context log is fully in English and now includes all major iteration milestones.
+- Risks / technical debt:
+  - Entries must be kept up to date to avoid context drift.
+- Next steps:
+  - Add `context.md` update as a required item in PR checklist.
+
+## Session 2026-02-28 16:40 (UTC)
+- Objective: Refactor API v1 route organization for Swagger clarity by controller.
+- Scope: Split monolithic `v1.py` router into controller-specific modules and update OpenAPI metadata/tests.
+- Technical decisions:
+  - Keep full API compatibility (`/api/v1/...` unchanged).
+  - Remove inherited `v1` tag to prevent mixed Swagger grouping.
+  - Use controller tags (`system`, `books`, `history`, `retention`) with explicit `openapi_tags` ordering.
+- Sources consulted (Context7 / official docs):
+  - Context7 FastAPI docs for `APIRouter` composition and `openapi_tags` metadata behavior.
+- Files changed:
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1.py` (deleted)
+  - `bsentinel/infrastructure/api/v1/__init__.py`
+  - `bsentinel/infrastructure/api/v1/router.py`
+  - `bsentinel/infrastructure/api/v1/system.py`
+  - `bsentinel/infrastructure/api/v1/books.py`
+  - `bsentinel/infrastructure/api/v1/history.py`
+  - `bsentinel/infrastructure/api/v1/retention.py`
+  - `bsentinel/infrastructure/api/v1/schemas.py`
+  - `bsentinel/infrastructure/api/v1/common.py`
+  - `tests/integration/api/test_openapi_schema.py`
+- Verification commands:
+  - `uv run pytest -q` (failed: `uv` command not available in shell)
+  - `.venv/bin/python -m pytest -q`
+- Results:
+  - Test suite passed: `16 passed`.
+  - Swagger/OpenAPI now groups v1 endpoints by controller tags.
+  - Commit created: `1116412 refactor(api): split v1 routes by controller and improve OpenAPI tags`.
+- Risks / technical debt:
+  - `uv` command availability remains environment-dependent.
+- Next steps:
+  - Keep router-per-controller pattern for new API features.
+  - Continue appending `context.md` after each implementation session.
+
+## Open Constraints
+- `uv run` in this environment may require `PYTHONPATH` and explicit `--python` selection.
+- Packaging discovery can fail in editable mode due to flat-layout multiple top-level package detection.
+
+## Session 2026-02-28 17:10 (UTC)
+- Objective: Align project documentation with the implemented MVP status and separate roadmap from active behavior docs.
+- Scope: Documentation restructure (`docs/` tree), `PROGRESS.md` rewrite, `QUICKSTART.md` alignment, and cross-link updates.
+- Technical decisions:
+  - Treat legacy idea/spec docs as historical artifacts.
+  - Split feature docs into `docs/features/mvp/` (implemented) and `docs/features/roadmap/` (future scope).
+  - Keep operational docs in Spanish while preserving `context.md` in English.
+- Sources consulted (Context7 / official docs):
+  - Not required (internal documentation alignment task).
+- Files changed:
+  - `PROGRESS.md`
+  - `QUICKSTART.md`
+  - `Readme.md`
+  - `AGENTS.md`
+  - `docs/README.md`
+  - `docs/FASE_1_COMPLETADA.md`
+  - `docs/archive/first_idea.md` (moved)
+  - `docs/features/mvp/api_v1_mvp.feature` (new)
+  - `docs/features/roadmap/*.feature` (moved)
+- Verification commands:
+  - Repository/document search checks for endpoint and path consistency.
+  - File tree checks for docs relocation.
+- Results:
+  - Documentation now reflects the real MVP scope and explicitly separates future roadmap items.
+- Risks / technical debt:
+  - Roadmap feature files still contain older endpoint conventions by design; they are intentionally isolated from MVP docs.
+- Next steps:
+  - Keep promoting scenarios from `roadmap` to `mvp` as implementation advances.
+  - Update `Readme.md` and `context.md` after each implementation session.
+
+## Session 2026-02-28 18:20 (UTC)
+- Objective: Decouple monolithic application service/repository responsibilities and refactor API v1 controllers/routes.
+- Scope: Hexagonal-style split of `application`, in-memory persistence adapters in `infrastructure`, API v1 route redesign, error contract unification, scheduler wiring update, and unit/integration test adjustments.
+- Technical decisions:
+  - Replaced monolithic `BookService` with focused services: `CatalogCommandService`, `CatalogQueryService`, `ScrapingService`, `PricingQueryService`, `RetentionService`, and `SystemQueryService`.
+  - Introduced repository and external ports under `application/ports` and moved in-memory implementations to `infrastructure/persistence/in_memory`.
+  - Applied direct-breaking API path migration from old `/api/v1/books...` style to `/api/v1/catalog...`, `/api/v1/pricing...`, and `/api/v1/retention/jobs/archive...`.
+  - Standardized API error payload to `error.code`, `error.message`, `error.details`, and `request_id`.
+  - Added compatibility alias `StandardException = StandardError` during exception naming cleanup.
+- Sources consulted (Context7 / official docs):
+  - Internal repository analysis and existing project conventions.
+- Files changed:
+  - `bsentinel/application/__init__.py`
+  - `bsentinel/application/ports/*`
+  - `bsentinel/application/services/*`
+  - `bsentinel/application/repository.py` (deleted)
+  - `bsentinel/application/services.py` (deleted)
+  - `bsentinel/infrastructure/persistence/in_memory/*`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/router.py`
+  - `bsentinel/infrastructure/api/v1/system.py`
+  - `bsentinel/infrastructure/api/v1/catalog.py` (new)
+  - `bsentinel/infrastructure/api/v1/pricing.py` (new)
+  - `bsentinel/infrastructure/api/v1/retention.py`
+  - `bsentinel/infrastructure/api/v1/schemas.py`
+  - `bsentinel/infrastructure/api/v1/books.py` (deleted)
+  - `bsentinel/infrastructure/api/v1/history.py` (deleted)
+  - `bsentinel/infrastructure/scheduler/service.py`
+  - `bsentinel/exceptions.py`
+  - `tests/conftest.py`
+  - `tests/integration/api/test_mvp_api.py`
+  - `tests/integration/api/test_openapi_schema.py`
+  - `tests/unit/api/test_root_app_unit.py`
+  - `tests/unit/application/test_catalog_services.py` (new)
+  - `tests/unit/application/test_retention_service.py` (new)
+  - `Readme.md`
+- Verification commands:
+  - `uv run ruff check .`
+  - `uv run pytest -q`
+- Results:
+  - Lint passed.
+  - Test suite passed: `20 passed in 2.23s`.
+- Risks / technical debt:
+  - `pyproject.toml` still uses deprecated `tool.uv.dev-dependencies`; should migrate to `dependency-groups.dev`.
+  - API paths changed and require client updates for compatibility.
+- Next steps:
+  - Update API consumers to new `/api/v1/system|catalog|pricing|retention` routes.
+  - Migrate UV dev dependency configuration to avoid deprecation warnings.
+
+## Session 2026-02-28 18:55 (UTC)
+- Objective: Implement real persistence with SQLAlchemy + Alembic while preserving current API contract and test behavior.
+- Scope: Async repository ports/services migration, SQLAlchemy persistence adapters, Alembic migration baseline with default store seed, runtime wiring in FastAPI root app, scheduler integration update, and test bootstrap migration to SQL backend.
+- Technical decisions:
+  - Kept `/api/v1` HTTP contract unchanged while swapping persistence backend from in-memory to SQL by default.
+  - Migrated repository ports and application services to async to align with AsyncSession.
+  - Added SQL schema with normalized `book_authors` and `book_categories` child tables.
+  - Added `price_history_archive` and implemented archive job behavior as row move (active -> archive table).
+  - Kept in-memory adapters as fallback (`PERSISTENCE_BACKEND=in_memory`).
+- Sources consulted (Context7 / official docs):
+  - Context7 SQLAlchemy 2.x docs for declarative mappings and session patterns.
+- Files changed:
+  - `bsentinel/_settings.py`
+  - `bsentinel/settings/local.py`
+  - `bsentinel/settings/production.py`
+  - `bsentinel/application/ports/repositories.py`
+  - `bsentinel/application/services/catalog.py`
+  - `bsentinel/application/services/pricing.py`
+  - `bsentinel/application/services/retention.py`
+  - `bsentinel/application/services/system.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/catalog.py`
+  - `bsentinel/infrastructure/api/v1/pricing.py`
+  - `bsentinel/infrastructure/api/v1/retention.py`
+  - `bsentinel/infrastructure/api/v1/system.py`
+  - `bsentinel/infrastructure/scheduler/service.py`
+  - `bsentinel/infrastructure/persistence/in_memory/*.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/*` (new package)
+  - `alembic.ini`
+  - `alembic/env.py`
+  - `alembic/script.py.mako`
+  - `alembic/versions/0001_initial_schema.py`
+  - `tests/conftest.py`
+  - `tests/unit/application/test_catalog_services.py`
+  - `tests/unit/application/test_retention_service.py`
+  - `pyproject.toml`
+  - `Readme.md`
+  - `PROGRESS.md`
+  - `QUICKSTART.md`
+- Verification commands:
+  - `uv run ruff check .`
+  - `uv run pytest -q`
+- Results:
+  - Lint passed.
+  - Test suite passed: `20 passed in 2.64s`.
+- Risks / technical debt:
+  - `tool.uv.dev-dependencies` in `pyproject.toml` is deprecated; migration to `dependency-groups.dev` is still pending.
+  - Postgres smoke tests are still pending (current suite validates SQL path on SQLite async).
+- Next steps:
+  - Add optional PostgreSQL smoke tests in CI/dev profile.
+  - Migrate uv dev dependency configuration to remove deprecation warning.
+  - Continue updating `Readme.md` and `context.md` after each implementation session.
