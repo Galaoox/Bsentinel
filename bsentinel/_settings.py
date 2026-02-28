@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     scraping_timeout: int = 30  # Timeout en segundos
     scraping_max_retries: int = 3
 
+    # Configuración del scheduler
+    scheduler_scrape_interval_hours: int = 6
+
     # Configuración de OpenLibrary API
     openlibrary_api_url: str = "https://openlibrary.org"
     openlibrary_rate_limit: float = 1.0  # Segundos entre peticiones

@@ -1,23 +1,41 @@
 """Aplicación raíz de FastAPI para bsentinel."""
 
+from __future__ import annotations
+
 import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from bsentinel import settings
 from bsentinel._logging import configure_logging
+from bsentinel.application import BookService, InMemoryRepository
+from bsentinel.infrastructure.api.v1 import build_v1_router
+from bsentinel.infrastructure.openlibrary import OpenLibraryClient
+from bsentinel.infrastructure.scheduler import LocalScheduler
+from bsentinel.infrastructure.scraping import BuscalibreScraper
+
+repository = InMemoryRepository()
+book_service = BookService(repository=repository, scraper=BuscalibreScraper(), openlibrary=OpenLibraryClient())
+scheduler = LocalScheduler(book_service)
+
+
+def get_book_service() -> BookService:
+    return book_service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gestiona el ciclo de vida de la aplicación."""
-    # Startup
     configure_logging()
+    scheduler.start(interval_hours=settings.scheduler_scrape_interval_hours)
+    app.state.repository = repository
+    app.state.book_service = book_service
+    app.state.scheduler = scheduler
     yield
-    # Shutdown
-    pass
+    scheduler.shutdown()
 
 
 root_app = FastAPI(
@@ -25,6 +43,14 @@ root_app = FastAPI(
     version=settings.app_version,
     description="Sistema de rastreo de precios de libros mediante web scraping",
     lifespan=lifespan,
+)
+
+root_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -50,7 +76,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Router común para endpoints de salud
 common_router = APIRouter()
 
 
@@ -62,6 +87,9 @@ async def health_check():
         "service": settings.app_name,
         "version": settings.app_version,
         "environment": settings.app_environment,
+        "db": "in-memory",
+        "scraping": "ready",
+        "openlibrary": "ready",
     }
 
 
@@ -76,7 +104,4 @@ async def root():
 
 
 root_app.include_router(common_router)
-
-# TODO: Incluir routers de versiones de la API cuando se implementen
-# from .v1 import api as api_v1
-# root_app.include_router(api_v1.router, prefix="/v1")
+root_app.include_router(build_v1_router(get_book_service))

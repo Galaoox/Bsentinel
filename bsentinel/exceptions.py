@@ -2,18 +2,15 @@
 
 
 class StandardException(Exception):
-    """Excepción base para la aplicación.
-    
-    Todas las excepciones personalizadas deben heredar de esta clase.
-    """
+    """Excepción base para la aplicación."""
 
 
 class EntityDoesNotExistError(StandardException):
-    """Se lanza cuando una entidad no existe en la base de datos."""
+    """Se lanza cuando una entidad no existe."""
 
 
 class EntityAlreadyExistsError(StandardException):
-    """Se lanza cuando una entidad ya existe en la base de datos."""
+    """Se lanza cuando una entidad ya existe."""
 
 
 class OperationNotAllowedError(StandardException):
@@ -21,7 +18,7 @@ class OperationNotAllowedError(StandardException):
 
 
 class ExternalServiceError(StandardException):
-    """Se lanza cuando un servicio externo no está disponible (ej: OpenLibrary API)."""
+    """Se lanza cuando un servicio externo no está disponible."""
 
 
 class DatabaseError(StandardException):
@@ -29,17 +26,16 @@ class DatabaseError(StandardException):
 
 
 class ScrapingError(StandardException):
-    """Se lanza cuando hay un error durante el proceso de scraping."""
+    """Se lanza cuando hay un error durante scraping."""
 
 
 class InvalidURLError(StandardException):
-    """Se lanza cuando una URL es inválida o malformada."""
+    """Se lanza cuando una URL es inválida."""
 
 
 class UnsupportedStoreError(StandardException):
-    """Se lanza cuando se intenta scrapear una tienda no soportada."""
+    """Se lanza cuando la tienda no está soportada."""
 
 
 class ValidationError(StandardException):
-    """Se lanza cuando falla la validación de datos.""" in the authentication process.
-    """
+    """Se lanza cuando falla la validación de datos."""
