@@ -42,6 +42,14 @@ root_app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="Sistema de rastreo de precios de libros mediante web scraping",
+    openapi_tags=[
+        {"name": "Root", "description": "Punto de entrada base de la API."},
+        {"name": "Health", "description": "Estado operativo del servicio y dependencias."},
+        {"name": "system", "description": "Información del estado y capacidades de la versión v1."},
+        {"name": "books", "description": "Gestión de libros rastreados (alta, consulta, baja y restauración)."},
+        {"name": "history", "description": "Consulta de historial de precios y comparación por libro."},
+        {"name": "retention", "description": "Operaciones de archivado y estado de jobs de retención."},
+    ],
     lifespan=lifespan,
 )
 
