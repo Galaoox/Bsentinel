@@ -31,7 +31,7 @@
   1. Resolve library id (`resolve-library-id`).
   2. Query docs (`query-docs`) with concrete implementation intent.
   3. Apply changes using the retrieved guidance.
-- If Context7 is unavailable, use official primary docs and record that fallback in `context.md`.
+- If Context7 is unavailable, use official primary documentation as fallback.
 
 ## Engineering Principles
 - Apply **SOLID** for maintainable boundaries and dependency direction.
@@ -68,3 +68,12 @@
   - files changed,
   - verification commands/results,
   - risks/debt and next steps.
+- `context.md` is not a documentation fallback source; its purpose is historical session tracking.
+- At the end of each implemented plan/session, explicitly suggest updating both `Readme.md` and `context.md` when applicable.
+
+## End-of-Session Checklist
+- Verify implementation scope against the agreed plan.
+- Run relevant checks/tests and capture outcomes.
+- Suggest updating `Readme.md` when behavior, setup, or API usage changed.
+- Suggest updating `context.md` with a new session entry (objective, changes, validations, next steps).
+- Ensure commit messages follow Conventional Commits in English.
