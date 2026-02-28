@@ -11,9 +11,10 @@ class SystemQueryService:
     def __init__(self, *, stores: StoreRepositoryPort) -> None:
         self.stores = stores
 
-    def get_info(self) -> dict:
+    async def get_info(self) -> dict:
+        stores = await self.stores.list()
         return {
             "version": "v1",
-            "supported_sites": [store.domain for store in self.stores.list()],
+            "supported_sites": [store.domain for store in stores],
             "updated_at": datetime.now(UTC),
         }

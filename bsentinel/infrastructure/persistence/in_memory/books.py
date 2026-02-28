@@ -13,19 +13,19 @@ class InMemoryBookRepository:
     def __init__(self, store: InMemoryStore) -> None:
         self.store = store
 
-    def add(self, book: Book) -> None:
+    async def add(self, book: Book) -> None:
         self.store.books[book.id] = book
 
-    def get(self, book_id: UUID) -> Book | None:
+    async def get(self, book_id: UUID) -> Book | None:
         return self.store.books.get(book_id)
 
-    def get_by_source_url(self, source_url: str) -> Book | None:
+    async def get_by_source_url(self, source_url: str) -> Book | None:
         for book in self.store.books.values():
             if book.source_url == source_url:
                 return book
         return None
 
-    def list(self, *, include_deleted: bool = False) -> list[Book]:
+    async def list(self, *, include_deleted: bool = False) -> list[Book]:
         values = self.store.books.values()
         if include_deleted:
             return list(values)

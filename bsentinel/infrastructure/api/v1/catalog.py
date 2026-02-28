@@ -48,7 +48,7 @@ def build_catalog_router(get_command_service, get_query_service, get_scraping_se
         limit: int = Query(default=50, ge=1, le=200),
         query_service: CatalogQueryService = Depends(get_query_service),
     ):
-        return query_service.list_books(
+        return await query_service.list_books(
             include_deleted=include_deleted,
             q=q,
             isbn=isbn,
@@ -60,14 +60,14 @@ def build_catalog_router(get_command_service, get_query_service, get_scraping_se
 
     @router.get("/books/{book_id}")
     async def get_book(book_id: UUID, query_service: CatalogQueryService = Depends(get_query_service)):
-        return query_service.get_book_detail(book_id)
+        return await query_service.get_book_detail(book_id)
 
     @router.delete("/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
     async def delete_book(book_id: UUID, command_service: CatalogCommandService = Depends(get_command_service)):
-        command_service.delete_book(book_id)
+        await command_service.delete_book(book_id)
 
     @router.post("/books/{book_id}/restore")
     async def restore_book(book_id: UUID, command_service: CatalogCommandService = Depends(get_command_service)):
-        return command_service.restore_book(book_id)
+        return await command_service.restore_book(book_id)
 
     return router

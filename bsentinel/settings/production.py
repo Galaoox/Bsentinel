@@ -8,6 +8,7 @@ class ProductionSettings(Settings):
 
     app_environment: str = "production"
     log_level: str = "INFO"
+    persistence_backend: str = "sql"
 
     # Configuración de producción sin reloading
     reload: bool = False

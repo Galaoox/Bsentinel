@@ -19,13 +19,13 @@ def build_retention_router(get_service):
         payload: CreateArchiveJobRequest,
         service: RetentionService = Depends(get_service),
     ):
-        return service.create_archive_job(
+        return await service.create_archive_job(
             older_than_days=payload.older_than_days,
             min_active_records_per_book=payload.min_active_records_per_book,
         )
 
     @router.get("/jobs/archive/{job_id}")
     async def get_archive_job(job_id: UUID, service: RetentionService = Depends(get_service)):
-        return service.get_archive_job(job_id)
+        return await service.get_archive_job(job_id)
 
     return router

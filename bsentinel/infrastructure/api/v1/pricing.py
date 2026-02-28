@@ -26,7 +26,7 @@ def build_pricing_router(get_service):
         limit: int = Query(default=50, ge=1, le=200),
         service: PricingQueryService = Depends(get_service),
     ):
-        return service.get_history(
+        return await service.get_history(
             book_id=book_id,
             source=source,
             state=state,
@@ -38,6 +38,6 @@ def build_pricing_router(get_service):
 
     @router.get("/books/{book_id}/comparison")
     async def price_comparison(book_id: UUID, service: PricingQueryService = Depends(get_service)):
-        return service.get_price_comparison(book_id)
+        return await service.get_price_comparison(book_id)
 
     return router

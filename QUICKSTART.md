@@ -8,6 +8,7 @@ Esta guía arranca la API MVP localmente y valida los endpoints principales.
 2. Git
 3. Entorno virtual `.venv` (si no existe, créalo)
 4. `uv` opcional (recomendado)
+5. PostgreSQL local (si usarás `DATABASE_URL` por defecto)
 
 ## 1) Preparar entorno
 
@@ -18,7 +19,23 @@ uv sync
 
 Si `uv` no está disponible, usa el entorno virtual existente para ejecutar comandos.
 
-## 2) Ejecutar la API
+## 2) Configurar persistencia
+
+Por defecto se usa backend SQL (`PERSISTENCE_BACKEND=sql`).
+
+Aplicar migraciones:
+
+```bash
+uv run alembic upgrade head
+```
+
+Si deseas usar persistencia en memoria temporalmente:
+
+```bash
+export PERSISTENCE_BACKEND=in_memory
+```
+
+## 3) Ejecutar la API
 
 Opción recomendada:
 
@@ -32,18 +49,24 @@ Fallback:
 .venv/bin/python -m bsentinel.infrastructure.api
 ```
 
-## 3) Verificar servicio
+## 4) Verificar servicio
 
 - Health: `http://localhost:8000/health`
 - Swagger: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
-## 4) Ejecutar pruebas
+## 5) Ejecutar pruebas
 
 Comando principal:
 
 ```bash
 uv run pytest -q
+```
+
+Lint:
+
+```bash
+uv run ruff check .
 ```
 
 Fallback:
@@ -52,20 +75,24 @@ Fallback:
 .venv/bin/python -m pytest -q
 ```
 
-## 5) Qué está implementado hoy
+## 6) Qué está implementado hoy
 
-- API v1 para libros, historial y retención en `/api/v1/...`
+- API v1 (`/api/v1/system|catalog|pricing|retention`)
 - Scheduler local
 - Integración básica con OpenLibrary
-- Persistencia en memoria (no durable)
+- Persistencia SQLAlchemy + Alembic
+- Seed inicial de tienda Buscalibre CO
 
 ## Solución de problemas común
 
 ### `uv: command not found`
 Usa el fallback con `.venv/bin/python` o instala `uv` y reinicia la terminal.
 
-### Puerto `8000` ocupado
-Ajusta `PORT` en configuración/entorno o detén el proceso que usa ese puerto.
+### Error de conexión a PostgreSQL
+Verifica `DATABASE_URL`, credenciales y que el servicio esté arriba.
+
+### No existen tablas
+Ejecuta: `uv run alembic upgrade head`.
 
 ## Documentación relacionada
 

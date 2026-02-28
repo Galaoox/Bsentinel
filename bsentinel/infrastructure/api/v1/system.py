@@ -12,6 +12,6 @@ def build_system_router(get_service):
 
     @router.get("/info")
     async def api_info(service: SystemQueryService = Depends(get_service)):
-        return service.get_info()
+        return await service.get_info()
 
     return router

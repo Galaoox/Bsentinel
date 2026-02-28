@@ -15,15 +15,15 @@ class InMemoryArchiveJobRepository:
     def __init__(self, store: InMemoryStore) -> None:
         self.store = store
 
-    def create(self) -> ArchiveJob:
+    async def create(self) -> ArchiveJob:
         job = ArchiveJob()
         self.store.archive_jobs[job.id] = job
         return job
 
-    def get(self, job_id: UUID) -> ArchiveJob | None:
+    async def get(self, job_id: UUID) -> ArchiveJob | None:
         return self.store.archive_jobs.get(job_id)
 
-    def run(self, job_id: UUID, older_than_days: int, min_active_records_per_book: int) -> ArchiveJob:
+    async def run(self, job_id: UUID, older_than_days: int, min_active_records_per_book: int) -> ArchiveJob:
         job = self.store.archive_jobs[job_id]
         job.status = "running"
         job.started_at = now_utc()

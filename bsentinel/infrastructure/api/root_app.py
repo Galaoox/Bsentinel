@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bsentinel import settings
 from bsentinel._logging import configure_logging
@@ -38,10 +40,20 @@ from bsentinel.infrastructure.persistence.in_memory import (
     InMemoryStore,
     InMemoryStoreRepository,
 )
+from bsentinel.infrastructure.persistence.sqlalchemy import (
+    SQLArchiveJobRepository,
+    SQLBookRepository,
+    SQLHistoryRepository,
+    SQLRelationRepository,
+    SQLStoreRepository,
+    session_scope,
+)
 from bsentinel.infrastructure.scheduler import LocalScheduler
 from bsentinel.infrastructure.scraping import BuscalibreScraper
 
 in_memory_store = InMemoryStore()
+metadata_client = OpenLibraryClient()
+scraper_client = BuscalibreScraper()
 
 book_repository = InMemoryBookRepository(in_memory_store)
 store_repository = InMemoryStoreRepository(in_memory_store)
@@ -53,7 +65,7 @@ catalog_command_service = CatalogCommandService(
     books=book_repository,
     stores=store_repository,
     relations=relation_repository,
-    metadata=OpenLibraryClient(),
+    metadata=metadata_client,
 )
 catalog_query_service = CatalogQueryService(
     books=book_repository,
@@ -64,7 +76,7 @@ scraping_service = ScrapingService(
     books=book_repository,
     relations=relation_repository,
     history=history_repository,
-    scraper=BuscalibreScraper(),
+    scraper=scraper_client,
 )
 pricing_query_service = PricingQueryService(
     books=book_repository,
@@ -75,31 +87,121 @@ pricing_query_service = PricingQueryService(
 retention_service = RetentionService(jobs=archive_job_repository)
 system_query_service = SystemQueryService(stores=store_repository)
 
-scheduler = LocalScheduler(scraping_service)
+
+async def get_session() -> AsyncIterator[AsyncSession]:
+    async for session in session_scope():
+        yield session
 
 
-def get_system_service() -> SystemQueryService:
-    return system_query_service
+async def get_optional_session() -> AsyncIterator[AsyncSession | None]:
+    if settings.persistence_backend == "in_memory":
+        yield None
+        return
+    async for session in session_scope():
+        yield session
 
 
-def get_catalog_command_service() -> CatalogCommandService:
-    return catalog_command_service
+def _build_sql_services(session: AsyncSession) -> dict[str, Any]:
+    books = SQLBookRepository(session)
+    stores = SQLStoreRepository(session)
+    relations = SQLRelationRepository(session)
+    history = SQLHistoryRepository(session)
+    jobs = SQLArchiveJobRepository(session)
+
+    return {
+        "system": SystemQueryService(stores=stores),
+        "catalog_command": CatalogCommandService(
+            books=books,
+            stores=stores,
+            relations=relations,
+            metadata=metadata_client,
+        ),
+        "catalog_query": CatalogQueryService(
+            books=books,
+            stores=stores,
+            relations=relations,
+        ),
+        "scraping": ScrapingService(
+            books=books,
+            relations=relations,
+            history=history,
+            scraper=scraper_client,
+        ),
+        "pricing": PricingQueryService(
+            books=books,
+            stores=stores,
+            relations=relations,
+            history=history,
+        ),
+        "retention": RetentionService(jobs=jobs),
+    }
 
 
-def get_catalog_query_service() -> CatalogQueryService:
-    return catalog_query_service
+async def get_system_service(
+    session: AsyncSession | None = Depends(get_optional_session),
+) -> SystemQueryService:
+    if settings.persistence_backend == "in_memory":
+        return system_query_service
+    assert session is not None
+    return _build_sql_services(session)["system"]
 
 
-def get_scraping_service() -> ScrapingService:
-    return scraping_service
+async def get_catalog_command_service(
+    session: AsyncSession | None = Depends(get_optional_session),
+) -> CatalogCommandService:
+    if settings.persistence_backend == "in_memory":
+        return catalog_command_service
+    assert session is not None
+    return _build_sql_services(session)["catalog_command"]
 
 
-def get_pricing_service() -> PricingQueryService:
-    return pricing_query_service
+async def get_catalog_query_service(
+    session: AsyncSession | None = Depends(get_optional_session),
+) -> CatalogQueryService:
+    if settings.persistence_backend == "in_memory":
+        return catalog_query_service
+    assert session is not None
+    return _build_sql_services(session)["catalog_query"]
 
 
-def get_retention_service() -> RetentionService:
-    return retention_service
+async def get_scraping_service(
+    session: AsyncSession | None = Depends(get_optional_session),
+) -> ScrapingService:
+    if settings.persistence_backend == "in_memory":
+        return scraping_service
+    assert session is not None
+    return _build_sql_services(session)["scraping"]
+
+
+async def get_pricing_service(
+    session: AsyncSession | None = Depends(get_optional_session),
+) -> PricingQueryService:
+    if settings.persistence_backend == "in_memory":
+        return pricing_query_service
+    assert session is not None
+    return _build_sql_services(session)["pricing"]
+
+
+async def get_retention_service(
+    session: AsyncSession | None = Depends(get_optional_session),
+) -> RetentionService:
+    if settings.persistence_backend == "in_memory":
+        return retention_service
+    assert session is not None
+    return _build_sql_services(session)["retention"]
+
+
+async def run_scraping_batch() -> int:
+    if settings.persistence_backend == "in_memory":
+        return await scraping_service.scrape_all_active()
+
+    async for session in session_scope():
+        services = _build_sql_services(session)
+        return await services["scraping"].scrape_all_active()
+    return 0
+
+
+scheduler = LocalScheduler(run_scraping_batch)
 
 
 @asynccontextmanager
@@ -107,8 +209,9 @@ async def lifespan(app: FastAPI):
     """Gestiona el ciclo de vida de la aplicación."""
     configure_logging()
     scheduler.start(interval_hours=settings.scheduler_scrape_interval_hours)
-    app.state.store = in_memory_store
     app.state.scheduler = scheduler
+    if settings.persistence_backend == "in_memory":
+        app.state.store = in_memory_store
     yield
     scheduler.shutdown()
 
@@ -235,7 +338,7 @@ async def health_check():
         "service": settings.app_name,
         "version": settings.app_version,
         "environment": settings.app_environment,
-        "db": "in-memory",
+        "db": "in-memory" if settings.persistence_backend == "in_memory" else "sqlalchemy",
         "scraping": "ready",
         "openlibrary": "ready",
     }

@@ -49,10 +49,10 @@ class CatalogCommandService:
         if domain not in BUSCALIBRE_DOMAINS:
             raise UnsupportedStoreError("Unsupported store")
 
-        if self.books.get_by_source_url(product_url):
+        if await self.books.get_by_source_url(product_url):
             raise EntityAlreadyExistsError("Book already exists")
 
-        store = self.stores.get_by_domain("www.buscalibre.com.co")
+        store = await self.stores.get_by_domain("www.buscalibre.com.co")
         if not store or not store.is_active:
             raise UnsupportedStoreError("Unsupported store")
 
@@ -70,20 +70,21 @@ class CatalogCommandService:
                 book.image_url = metadata.get("image_url")
                 book.categories = metadata.get("categories") or []
 
-        self.books.add(book)
+        await self.books.add(book)
         relation = BookStoreRelation(book_id=book.id, store_id=store.id, product_url=product_url)
-        self.relations.add(relation)
+        await self.relations.add(relation)
         return book, relation
 
-    def delete_book(self, book_id: UUID) -> None:
-        book = self.books.get(book_id)
+    async def delete_book(self, book_id: UUID) -> None:
+        book = await self.books.get(book_id)
         if not book:
             raise EntityDoesNotExistError("Book not found")
         book.is_deleted = True
         book.deleted_at = datetime.now(UTC)
+        await self.books.add(book)
 
-    def restore_book(self, book_id: UUID) -> dict:
-        book = self.books.get(book_id)
+    async def restore_book(self, book_id: UUID) -> dict:
+        book = await self.books.get(book_id)
         if not book:
             raise EntityDoesNotExistError("Book not found")
         if not book.is_deleted:
@@ -91,6 +92,7 @@ class CatalogCommandService:
 
         book.is_deleted = False
         book.deleted_at = None
+        await self.books.add(book)
         return {"book_id": str(book.id), "is_deleted": book.is_deleted, "deleted_at": book.deleted_at}
 
 
@@ -106,7 +108,7 @@ class CatalogQueryService:
         self.stores = stores
         self.relations = relations
 
-    def list_books(
+    async def list_books(
         self,
         *,
         include_deleted: bool,
@@ -117,7 +119,7 @@ class CatalogQueryService:
         page: int,
         limit: int,
     ) -> dict:
-        books = self.books.list(include_deleted=include_deleted)
+        books = await self.books.list(include_deleted=include_deleted)
 
         if q:
             term = q.lower()
@@ -137,7 +139,7 @@ class CatalogQueryService:
 
         items = []
         for book in paginated:
-            rels = self.relations.list_for_book(book.id)
+            rels = await self.relations.list_for_book(book.id)
             relation = rels[0] if rels else None
             items.append(
                 {
@@ -161,14 +163,14 @@ class CatalogQueryService:
             },
         }
 
-    def get_book_detail(self, book_id: UUID) -> dict:
-        book = self.books.get(book_id)
+    async def get_book_detail(self, book_id: UUID) -> dict:
+        book = await self.books.get(book_id)
         if not book:
             raise EntityDoesNotExistError("Book not found")
 
         stores = []
-        for rel in self.relations.list_for_book(book.id):
-            store = self.stores.get(rel.store_id)
+        for rel in await self.relations.list_for_book(book.id):
+            store = await self.stores.get(rel.store_id)
             stores.append(
                 {
                     "domain": store.domain if store else "unknown",

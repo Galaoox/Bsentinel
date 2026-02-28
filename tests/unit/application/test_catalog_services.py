@@ -58,7 +58,7 @@ async def test_catalog_query_lists_created_books():
         "https://www.buscalibre.com.co/libro-clean-architecture-isbn-9780134494166"
     )
 
-    listed = query_service.list_books(
+    listed = await query_service.list_books(
         include_deleted=False,
         q="clean",
         isbn=None,

@@ -9,9 +9,9 @@
 
 ## Resumen Ejecutivo
 
-El proyecto ya no está solo en planificación: hoy cuenta con un MVP funcional con FastAPI, scraping para Buscalibre CO, integración básica con OpenLibrary, scheduler local y pruebas unitarias/integración.
+El proyecto cuenta con un MVP funcional con FastAPI, scraping para Buscalibre CO, integración básica con OpenLibrary, scheduler local y pruebas unitarias/integración.
 
-La persistencia sigue siendo en memoria, por lo que aún no hay almacenamiento durable ni migraciones de base de datos.
+La persistencia durable ya fue integrada usando SQLAlchemy + Alembic, manteniendo el contrato API v1 existente.
 
 ## Implementado en Código
 
@@ -20,19 +20,20 @@ La persistencia sigue siendo en memoria, por lo que aún no hay almacenamiento d
 Endpoints actualmente disponibles:
 
 - `GET /health`
-- `GET /api/v1/info`
-- `POST /api/v1/books`
-- `GET /api/v1/books`
-- `GET /api/v1/books/{book_id}`
-- `DELETE /api/v1/books/{book_id}`
-- `POST /api/v1/books/{book_id}/restore`
-- `GET /api/v1/books/{book_id}/history`
-- `GET /api/v1/books/{book_id}/price-comparison`
-- `POST /api/v1/retention/archive-jobs`
-- `GET /api/v1/retention/archive-jobs/{job_id}`
+- `GET /api/v1/system/info`
+- `POST /api/v1/catalog/books`
+- `GET /api/v1/catalog/books`
+- `GET /api/v1/catalog/books/{book_id}`
+- `DELETE /api/v1/catalog/books/{book_id}`
+- `POST /api/v1/catalog/books/{book_id}/restore`
+- `GET /api/v1/pricing/books/{book_id}/history`
+- `GET /api/v1/pricing/books/{book_id}/comparison`
+- `POST /api/v1/retention/jobs/archive`
+- `GET /api/v1/retention/jobs/archive/{job_id}`
 
 Notas:
-- Swagger/ReDoc activos (`/docs`, `/redoc`) con agrupación por controlador (`system`, `books`, `history`, `retention`).
+- Swagger/ReDoc activos (`/docs`, `/redoc`) con agrupación por controlador (`system`, `catalog`, `pricing`, `retention`).
+- Contrato de errores estandarizado con `error.code`, `error.message`, `error.details`, `request_id`.
 - No hay autenticación/autorización en esta fase.
 
 ### Arquitectura
@@ -41,13 +42,23 @@ Notas:
 - API v1 modular por controlador en `bsentinel/infrastructure/api/v1/`.
 - Scheduler local con APScheduler para tareas periódicas.
 - Cliente OpenLibrary y scraper Buscalibre integrados en flujo MVP.
+- Persistencia SQL con repositorios en `bsentinel/infrastructure/persistence/sqlalchemy/`.
+
+### Persistencia y Migraciones
+
+- Backend por defecto: SQL (`PERSISTENCE_BACKEND=sql`).
+- Migraciones con Alembic (`alembic/`, `alembic.ini`).
+- Esquema inicial creado con seed de tienda Buscalibre CO.
+- Tabla de archivo incluida: `price_history_archive`.
 
 ### Calidad y Testing
 
 - Pruebas implementadas en:
   - `tests/unit/`
   - `tests/integration/`
-- Última validación conocida de suite: `16 passed`.
+- Última validación conocida:
+  - `uv run ruff check .` -> OK
+  - `uv run pytest -q` -> `20 passed`
 
 ## Documentación Funcional
 
@@ -56,10 +67,6 @@ Notas:
 - **Histórico de diseño**: `docs/archive/first_idea.md`
 
 ## Pendiente (Roadmap)
-
-## Persistencia y Datos
-- Reemplazar repositorio en memoria por persistencia durable (DB).
-- Definir estrategia de migraciones/versionado de esquema.
 
 ## Seguridad
 - Diseñar e implementar autenticación/autorización para endpoints protegidos.
@@ -70,20 +77,19 @@ Notas:
 
 ## Observabilidad y Operación
 - Endurecer métricas/telemetría para operación continua.
-- Definir política de retención/archivado productiva sobre almacenamiento real.
+- Endurecer estrategia de archivado/retención sobre crecimiento real de datos.
 
 ## Riesgos y Deuda Técnica
 
-- **Persistencia en memoria**: riesgo de pérdida de datos al reiniciar proceso.
 - **Sin auth**: API no apta para exposición pública sin capa de seguridad.
 - **Dependencias externas**: OpenLibrary y scraping sujetos a cambios de terceros.
-- **Entorno local**: `uv run` puede requerir ajustes específicos en algunos entornos.
+- **Configuración UV**: `tool.uv.dev-dependencies` está deprecado y debe migrarse a `dependency-groups.dev`.
 
 ## Próximos Hitos Sugeridos
 
-1. Implementar persistencia durable y repositorios reales.
-2. Incorporar autenticación para operaciones sensibles.
-3. Expandir escenarios de pruebas de integración sobre infraestructura persistente.
+1. Implementar autenticación para operaciones sensibles.
+2. Agregar smoke tests opcionales con PostgreSQL real.
+3. Expandir escenarios de pruebas de integración sobre retención/archivado en volumen.
 4. Promover escenarios de `docs/features/roadmap/` a `docs/features/mvp/` conforme se implementen.
 
 ## Referencias

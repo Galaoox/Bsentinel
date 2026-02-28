@@ -254,3 +254,56 @@ Append a new section at the end using this template:
 - Next steps:
   - Update API consumers to new `/api/v1/system|catalog|pricing|retention` routes.
   - Migrate UV dev dependency configuration to avoid deprecation warnings.
+
+## Session 2026-02-28 18:55 (UTC)
+- Objective: Implement real persistence with SQLAlchemy + Alembic while preserving current API contract and test behavior.
+- Scope: Async repository ports/services migration, SQLAlchemy persistence adapters, Alembic migration baseline with default store seed, runtime wiring in FastAPI root app, scheduler integration update, and test bootstrap migration to SQL backend.
+- Technical decisions:
+  - Kept `/api/v1` HTTP contract unchanged while swapping persistence backend from in-memory to SQL by default.
+  - Migrated repository ports and application services to async to align with AsyncSession.
+  - Added SQL schema with normalized `book_authors` and `book_categories` child tables.
+  - Added `price_history_archive` and implemented archive job behavior as row move (active -> archive table).
+  - Kept in-memory adapters as fallback (`PERSISTENCE_BACKEND=in_memory`).
+- Sources consulted (Context7 / official docs):
+  - Context7 SQLAlchemy 2.x docs for declarative mappings and session patterns.
+- Files changed:
+  - `bsentinel/_settings.py`
+  - `bsentinel/settings/local.py`
+  - `bsentinel/settings/production.py`
+  - `bsentinel/application/ports/repositories.py`
+  - `bsentinel/application/services/catalog.py`
+  - `bsentinel/application/services/pricing.py`
+  - `bsentinel/application/services/retention.py`
+  - `bsentinel/application/services/system.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/catalog.py`
+  - `bsentinel/infrastructure/api/v1/pricing.py`
+  - `bsentinel/infrastructure/api/v1/retention.py`
+  - `bsentinel/infrastructure/api/v1/system.py`
+  - `bsentinel/infrastructure/scheduler/service.py`
+  - `bsentinel/infrastructure/persistence/in_memory/*.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/*` (new package)
+  - `alembic.ini`
+  - `alembic/env.py`
+  - `alembic/script.py.mako`
+  - `alembic/versions/0001_initial_schema.py`
+  - `tests/conftest.py`
+  - `tests/unit/application/test_catalog_services.py`
+  - `tests/unit/application/test_retention_service.py`
+  - `pyproject.toml`
+  - `Readme.md`
+  - `PROGRESS.md`
+  - `QUICKSTART.md`
+- Verification commands:
+  - `uv run ruff check .`
+  - `uv run pytest -q`
+- Results:
+  - Lint passed.
+  - Test suite passed: `20 passed in 2.64s`.
+- Risks / technical debt:
+  - `tool.uv.dev-dependencies` in `pyproject.toml` is deprecated; migration to `dependency-groups.dev` is still pending.
+  - Postgres smoke tests are still pending (current suite validates SQL path on SQLite async).
+- Next steps:
+  - Add optional PostgreSQL smoke tests in CI/dev profile.
+  - Migrate uv dev dependency configuration to remove deprecation warning.
+  - Continue updating `Readme.md` and `context.md` after each implementation session.

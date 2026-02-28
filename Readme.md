@@ -12,7 +12,7 @@ El proyecto implementa un MVP funcional para entorno local/dev con:
 - Historial y comparación de precios
 - Archivado de historial por job
 - Scheduler local con APScheduler
-- Persistencia en memoria (sin base de datos persistente todavía)
+- Persistencia durable con **SQLAlchemy + Alembic** (por defecto)
 
 ## Arquitectura 🏗️
 
@@ -20,8 +20,10 @@ Estructura por capas (estilo hexagonal):
 
 - `bsentinel/domain/`: entidades y reglas de negocio puras
 - `bsentinel/application/`: casos de uso y orquestación
-- `bsentinel/infrastructure/`: API, scheduler, scraping y cliente OpenLibrary
+- `bsentinel/infrastructure/`: API, scheduler, scraping, cliente OpenLibrary y persistencia
 - `bsentinel/infrastructure/api/v1/`: rutas separadas por controlador (`system`, `catalog`, `pricing`, `retention`)
+- `bsentinel/infrastructure/persistence/sqlalchemy/`: modelos ORM, repositorios SQL y sesión
+- `alembic/`: migraciones de esquema y seed inicial
 - `tests/unit` y `tests/integration`: pruebas por nivel
 
 Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único por versión.
@@ -51,13 +53,19 @@ Nota de contrato de errores v1:
 uv sync
 ```
 
-2. Levantar API:
+2. Aplicar migraciones:
+
+```bash
+uv run alembic upgrade head
+```
+
+3. Levantar API:
 
 ```bash
 uv run python -m bsentinel.infrastructure.api
 ```
 
-3. Verificar:
+4. Verificar:
 
 - Swagger 📘: `http://localhost:8000/docs`
 - Health ✅: `http://localhost:8000/health`
@@ -70,18 +78,32 @@ Comando principal:
 uv run pytest -q
 ```
 
+Lint:
+
+```bash
+uv run ruff check .
+```
+
 Fallback en entorno local con venv:
 
 ```bash
 .venv/bin/python -m pytest -q
 ```
 
+## Persistencia y migraciones 🗃️
+
+- Backend por defecto: `PERSISTENCE_BACKEND=sql`
+- URL DB configurable vía `DATABASE_URL`
+- Migración inicial crea:
+  - `stores`, `books`, `book_authors`, `book_categories`, `book_store_relations`,
+  - `price_history`, `price_history_archive`, `archive_jobs`
+- Seed inicial automático para la tienda Buscalibre CO
+
 ## Limitaciones actuales ⚠️
 
 - No hay autenticación/autorización en endpoints.
-- Persistencia en memoria (los datos se reinician al reiniciar el proceso).
 - Integración OpenLibrary simplificada (best-effort).
-- En este entorno, `uv run` puede requerir configuración explícita de `PYTHONPATH` y `--python`.
+- `tool.uv.dev-dependencies` está deprecado en `pyproject.toml` y debe migrarse a `dependency-groups.dev`.
 
 ## Documentación 📚
 

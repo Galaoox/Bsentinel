@@ -13,11 +13,14 @@ class InMemoryRelationRepository:
     def __init__(self, store: InMemoryStore) -> None:
         self.store = store
 
-    def add(self, relation: BookStoreRelation) -> None:
+    async def add(self, relation: BookStoreRelation) -> None:
         self.store.relations[relation.id] = relation
 
-    def list_for_book(self, book_id: UUID) -> list[BookStoreRelation]:
+    async def save(self, relation: BookStoreRelation) -> None:
+        self.store.relations[relation.id] = relation
+
+    async def list_for_book(self, book_id: UUID) -> list[BookStoreRelation]:
         return [rel for rel in self.store.relations.values() if rel.book_id == book_id]
 
-    def list_all(self) -> list[BookStoreRelation]:
+    async def list_all(self) -> list[BookStoreRelation]:
         return list(self.store.relations.values())

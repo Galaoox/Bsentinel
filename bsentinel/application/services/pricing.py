@@ -35,6 +35,7 @@ class ScrapingService:
         relation.current_price = result.price
         relation.status = result.status
         relation.last_checked = result.checked_at
+        await self.relations.save(relation)
 
         record = PriceHistoryRecord(
             book_id=relation.book_id,
@@ -44,12 +45,12 @@ class ScrapingService:
             state=result.status,
             checked_at=result.checked_at,
         )
-        self.history.add(record)
+        await self.history.add(record)
 
     async def scrape_all_active(self) -> int:
         total = 0
-        for relation in self.relations.list_all():
-            book = self.books.get(relation.book_id)
+        for relation in await self.relations.list_all():
+            book = await self.books.get(relation.book_id)
             if book and not book.is_deleted:
                 await self.scrape_relation(relation)
                 total += 1
@@ -70,7 +71,7 @@ class PricingQueryService:
         self.relations = relations
         self.history = history
 
-    def get_history(
+    async def get_history(
         self,
         *,
         book_id: UUID,
@@ -81,10 +82,10 @@ class PricingQueryService:
         page: int,
         limit: int,
     ) -> dict:
-        if not self.books.get(book_id):
+        if not await self.books.get(book_id):
             raise EntityDoesNotExistError("Book not found")
 
-        records = self.history.list(
+        records = await self.history.list(
             book_id=book_id,
             source=source,
             state=state,
@@ -97,7 +98,7 @@ class PricingQueryService:
 
         output = []
         for record in paginated:
-            store = self.stores.get(record.store_id)
+            store = await self.stores.get(record.store_id)
             output.append(
                 {
                     "price": record.price,
@@ -119,16 +120,16 @@ class PricingQueryService:
             },
         }
 
-    def get_price_comparison(self, book_id: UUID) -> dict:
-        if not self.books.get(book_id):
+    async def get_price_comparison(self, book_id: UUID) -> dict:
+        if not await self.books.get(book_id):
             raise EntityDoesNotExistError("Book not found")
 
         offers = []
-        for relation in self.relations.list_for_book(book_id):
+        for relation in await self.relations.list_for_book(book_id):
             if relation.status != "activo" or relation.current_price is None:
                 continue
 
-            store = self.stores.get(relation.store_id)
+            store = await self.stores.get(relation.store_id)
             offers.append(
                 {
                     "domain": store.domain if store else "unknown",

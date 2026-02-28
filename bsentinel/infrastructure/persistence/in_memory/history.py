@@ -14,10 +14,10 @@ class InMemoryHistoryRepository:
     def __init__(self, store: InMemoryStore) -> None:
         self.store = store
 
-    def add(self, record: PriceHistoryRecord) -> None:
+    async def add(self, record: PriceHistoryRecord) -> None:
         self.store.history[record.id] = record
 
-    def list(
+    async def list(
         self,
         *,
         book_id: UUID,

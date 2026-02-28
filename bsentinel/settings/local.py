@@ -8,6 +8,7 @@ class LocalSettings(Settings):
 
     app_environment: str = "local"
     log_level: str = "DEBUG"
+    persistence_backend: str = "sql"
     database_url: str = "postgresql+asyncpg://bsentinel:bsentinel@localhost:5432/bsentinel"
 
     # Configuración de desarrollo con reloading

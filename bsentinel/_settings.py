@@ -8,7 +8,7 @@ class Settings(BaseSettings):
         env_file="secrets/.env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore"
+        extra="ignore",
     )
 
     # Configuración de la aplicación
@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     app_environment: str = "local"  # local o production
     port: int = 8000
     log_level: str = "INFO"
+    persistence_backend: str = "sql"  # sql | in_memory
 
     # Configuración de base de datos PostgreSQL
     database_url: str = "postgresql+asyncpg://bsentinel:bsentinel@localhost:5432/bsentinel"

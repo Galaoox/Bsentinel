@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
-from bsentinel.application.services import ScrapingService
 
 logger = logging.getLogger(__name__)
 
 
 class LocalScheduler:
-    def __init__(self, service: ScrapingService) -> None:
-        self.service = service
+    def __init__(self, run_scraping_batch: Callable[[], Awaitable[int]]) -> None:
+        self.run_scraping_batch = run_scraping_batch
         self.scheduler = AsyncIOScheduler()
 
     def start(self, interval_hours: int = 6) -> None:
@@ -32,5 +31,5 @@ class LocalScheduler:
         asyncio.create_task(self._run_scraping())
 
     async def _run_scraping(self) -> None:
-        updated = await self.service.scrape_all_active()
+        updated = await self.run_scraping_batch()
         logger.info("Scraping batch ejecutado", extra={"updated_relations": updated})
