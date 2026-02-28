@@ -138,6 +138,40 @@ Append a new section at the end using this template:
 - Next steps:
   - Add `context.md` update as a required item in PR checklist.
 
+## Session 2026-02-28 16:40 (UTC)
+- Objective: Refactor API v1 route organization for Swagger clarity by controller.
+- Scope: Split monolithic `v1.py` router into controller-specific modules and update OpenAPI metadata/tests.
+- Technical decisions:
+  - Keep full API compatibility (`/api/v1/...` unchanged).
+  - Remove inherited `v1` tag to prevent mixed Swagger grouping.
+  - Use controller tags (`system`, `books`, `history`, `retention`) with explicit `openapi_tags` ordering.
+- Sources consulted (Context7 / official docs):
+  - Context7 FastAPI docs for `APIRouter` composition and `openapi_tags` metadata behavior.
+- Files changed:
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1.py` (deleted)
+  - `bsentinel/infrastructure/api/v1/__init__.py`
+  - `bsentinel/infrastructure/api/v1/router.py`
+  - `bsentinel/infrastructure/api/v1/system.py`
+  - `bsentinel/infrastructure/api/v1/books.py`
+  - `bsentinel/infrastructure/api/v1/history.py`
+  - `bsentinel/infrastructure/api/v1/retention.py`
+  - `bsentinel/infrastructure/api/v1/schemas.py`
+  - `bsentinel/infrastructure/api/v1/common.py`
+  - `tests/integration/api/test_openapi_schema.py`
+- Verification commands:
+  - `uv run pytest -q` (failed: `uv` command not available in shell)
+  - `.venv/bin/python -m pytest -q`
+- Results:
+  - Test suite passed: `16 passed`.
+  - Swagger/OpenAPI now groups v1 endpoints by controller tags.
+  - Commit created: `1116412 refactor(api): split v1 routes by controller and improve OpenAPI tags`.
+- Risks / technical debt:
+  - `uv` command availability remains environment-dependent.
+- Next steps:
+  - Keep router-per-controller pattern for new API features.
+  - Continue appending `context.md` after each implementation session.
+
 ## Open Constraints
 - `uv run` in this environment may require `PYTHONPATH` and explicit `--python` selection.
 - Packaging discovery can fail in editable mode due to flat-layout multiple top-level package detection.

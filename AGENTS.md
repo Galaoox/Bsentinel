@@ -50,6 +50,7 @@
 - Place unit tests in `tests/unit/`; integration/API behavior in `tests/integration/`.
 - Name tests explicitly, e.g. `test_create_book_with_unsupported_store_returns_400`.
 - Add tests for new behavior, edge cases, and regressions before merge.
+- For unit test runs or syntax verification commands, use sub-agents to avoid consuming main-agent context.
 
 ## Commit & Pull Request Guidelines
 - Use Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`.

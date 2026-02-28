@@ -21,7 +21,10 @@ Estructura por capas (estilo hexagonal):
 - `bsentinel/domain/`: entidades y reglas de negocio puras
 - `bsentinel/application/`: casos de uso y orquestación
 - `bsentinel/infrastructure/`: API, scheduler, scraping y cliente OpenLibrary
+- `bsentinel/infrastructure/api/v1/`: rutas separadas por controlador (`system`, `books`, `history`, `retention`)
 - `tests/unit` y `tests/integration`: pruebas por nivel
+
+Swagger organiza ahora las rutas de `v1` por controlador/tag, evitando el agrupado único por versión.
 
 ## Endpoints MVP 🔌
 
