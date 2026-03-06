@@ -307,3 +307,109 @@ Append a new section at the end using this template:
   - Add optional PostgreSQL smoke tests in CI/dev profile.
   - Migrate uv dev dependency configuration to remove deprecation warning.
   - Continue updating `Readme.md` and `context.md` after each implementation session.
+
+## Session 2026-03-05 23:40 (UTC)
+- Objective: Implement JWT authentication for API v1 with refresh rotation and persistent refresh-token revocation.
+- Scope: Auth application service, JWT adapter, API v1 auth routes, Bearer protection for `/api/v1/*`, SQLAlchemy + in-memory refresh revocation repositories, Alembic migration, and test/doc updates.
+- Technical decisions:
+  - Kept the MVP auth model intentionally simple: one admin user sourced from environment variables.
+  - Used `OAuth2PasswordBearer` with `/api/v1/auth/login` so Swagger/OpenAPI exposes Bearer auth correctly.
+  - Implemented `access_token` + `refresh_token` flow with refresh rotation.
+  - Implemented `logout` as persistent refresh-token revocation; current access token remains valid until expiration.
+  - Protected all functional `v1` routers and left `/health`, root docs endpoints, and `/api/v1/auth/*` public.
+- Sources consulted (Context7 / official docs):
+  - Context7 FastAPI security docs for `OAuth2PasswordBearer`, token dependency flow, and OpenAPI integration.
+- Files changed:
+  - `bsentinel/_settings.py`
+  - `bsentinel/exceptions.py`
+  - `bsentinel/application/ports/__init__.py`
+  - `bsentinel/application/ports/auth.py` (new)
+  - `bsentinel/application/services/__init__.py`
+  - `bsentinel/application/services/auth.py` (new)
+  - `bsentinel/infrastructure/security/__init__.py` (new)
+  - `bsentinel/infrastructure/security/jwt.py` (new)
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/auth.py` (new)
+  - `bsentinel/infrastructure/api/v1/router.py`
+  - `bsentinel/infrastructure/api/v1/schemas.py`
+  - `bsentinel/infrastructure/persistence/in_memory/store.py`
+  - `bsentinel/infrastructure/persistence/in_memory/auth.py` (new)
+  - `bsentinel/infrastructure/persistence/in_memory/__init__.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/auth.py` (new)
+  - `bsentinel/infrastructure/persistence/sqlalchemy/models.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/__init__.py`
+  - `alembic/versions/0002_add_revoked_refresh_tokens.py` (new)
+  - `tests/integration/api/test_openapi_schema.py`
+  - `tests/integration/api/test_mvp_api.py`
+  - `tests/unit/application/test_auth_service.py` (new)
+  - `tests/unit/test_settings.py`
+  - `Readme.md`
+  - `PROGRESS.md`
+  - `pyproject.toml`
+  - `uv.lock`
+- Verification commands:
+  - `uv run ruff check .`
+  - `uv run pytest -q`
+- Results:
+  - Lint passed.
+  - Test suite passed: `26 passed`.
+- Risks / technical debt:
+  - Current auth model is still single-admin-by-env; no real user persistence or RBAC yet.
+  - `tool.uv.dev-dependencies` remains deprecated and should be migrated later.
+- Next steps:
+  - Update `Readme.md` when auth behavior evolves again.
+  - Continue appending `context.md` after each implementation session.
+  - Add PostgreSQL smoke tests in a dedicated next iteration.
+
+## Session 2026-03-05 23:40 (UTC)
+- Objective: Finalize MVP authentication, persistent refresh-token revocation, and developer command ergonomics.
+- Scope: JWT auth for API v1, SQL/in-memory refresh token revocation adapters, Alembic migration, auth API routes, protected route wiring, test coverage updates, local startup docs alignment, and root Makefile shortcuts.
+- Technical decisions:
+  - Kept the MVP auth model as a single admin identity configured by environment variables.
+  - Protected `/api/v1/system`, `/api/v1/catalog`, `/api/v1/pricing`, and `/api/v1/retention`, leaving `/api/v1/auth/*` public.
+  - Implemented refresh-token rotation with persistent revocation support to survive process restarts when SQL persistence is enabled.
+  - Introduced a root `Makefile` as the preferred shortcut layer for install, DB, migration, run, lint, test, and combined validation flows.
+  - Standardized local setup docs around `secrets/.env`, Docker PostgreSQL, Alembic migrations, and JWT login usage.
+- Sources consulted (Context7 / official docs):
+  - Context7 FastAPI docs for OAuth2 password flow and OpenAPI Bearer integration.
+  - Internal repository conventions and current route wiring.
+- Files changed:
+  - `bsentinel/application/ports/auth.py`
+  - `bsentinel/application/services/auth.py`
+  - `bsentinel/infrastructure/security/jwt.py`
+  - `bsentinel/infrastructure/api/v1/auth.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/router.py`
+  - `bsentinel/infrastructure/persistence/in_memory/auth.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/auth.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/models.py`
+  - `alembic/versions/0002_add_revoked_refresh_tokens.py`
+  - `tests/unit/application/test_auth_service.py`
+  - `tests/integration/api/test_mvp_api.py`
+  - `tests/integration/api/test_openapi_schema.py`
+  - `Makefile`
+  - `AGENTS.md`
+  - `Readme.md`
+  - `QUICKSTART.md`
+  - `PROGRESS.md`
+  - `context.md`
+- Verification commands:
+  - `uv run ruff check .`
+  - `uv run pytest -q`
+  - `make help`
+  - `make lint`
+  - `make test`
+- Results:
+  - Auth endpoints implemented: login, refresh, and logout.
+  - OpenAPI/Swagger now exposes Bearer auth for protected v1 routes.
+  - Refresh-token revocation is persisted via SQLAlchemy and covered by migration.
+  - Developer workflow is simplified through `make install`, `make db-up`, `make migrate`, `make run`, and `make check`.
+  - Validation passed: Ruff clean and test suite green (`26 passed`).
+- Risks / technical debt:
+  - Auth still relies on a single env-configured admin user; no user persistence or RBAC yet.
+  - `tool.uv.dev-dependencies` remains deprecated in `pyproject.toml`.
+  - `logout` only revokes refresh tokens; active access tokens remain valid until expiration.
+- Next steps:
+  - Migrate UV dev dependencies to `dependency-groups.dev`.
+  - Introduce persisted users/roles if the MVP moves beyond single-admin auth.
+  - Keep `Readme.md` and `context.md` updated after each implementation session.

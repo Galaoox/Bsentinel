@@ -119,3 +119,12 @@ class ArchiveJobModel(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     moved_records: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     errors: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+
+class RevokedRefreshTokenModel(Base):
+    __tablename__ = "revoked_refresh_tokens"
+
+    jti: Mapped[str] = mapped_column(String(36), primary_key=True)
+    username: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

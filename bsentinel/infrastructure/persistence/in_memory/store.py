@@ -17,6 +17,7 @@ class InMemoryStore:
         self.relations: dict[UUID, BookStoreRelation] = {}
         self.history: dict[UUID, PriceHistoryRecord] = {}
         self.archive_jobs: dict[UUID, ArchiveJob] = {}
+        self.revoked_refresh_tokens: dict[str, dict] = {}
         self._seed_store()
 
     def _seed_store(self) -> None:

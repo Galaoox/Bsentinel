@@ -41,5 +41,35 @@ class ValidationError(StandardError):
     """Se lanza cuando falla la validación de datos."""
 
 
+class AuthenticationError(StandardError):
+    """Se lanza cuando falla la autenticación."""
+
+    code = "AUTH_ERROR"
+
+
+class InvalidCredentialsError(AuthenticationError):
+    """Se lanza cuando las credenciales no son válidas."""
+
+    code = "AUTH_INVALID_CREDENTIALS"
+
+
+class InvalidTokenError(AuthenticationError):
+    """Se lanza cuando el token es inválido o expiró."""
+
+    code = "AUTH_INVALID_TOKEN"
+
+
+class RefreshTokenRevokedError(AuthenticationError):
+    """Se lanza cuando el refresh token ya fue revocado."""
+
+    code = "AUTH_REFRESH_REVOKED"
+
+
+class ForbiddenError(StandardError):
+    """Se lanza cuando el usuario no tiene permisos."""
+
+    code = "AUTH_FORBIDDEN"
+
+
 # Backward-compatible alias kept during migration.
 StandardException = StandardError

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bsentinel import settings
 from bsentinel._logging import configure_logging
 from bsentinel.application.services import (
+    AuthService,
     CatalogCommandService,
     CatalogQueryService,
     PricingQueryService,
@@ -24,8 +25,10 @@ from bsentinel.application.services import (
     SystemQueryService,
 )
 from bsentinel.exceptions import (
+    AuthenticationError,
     EntityAlreadyExistsError,
     EntityDoesNotExistError,
+    ForbiddenError,
     StandardException,
     UnsupportedStoreError,
     ValidationError,
@@ -36,6 +39,7 @@ from bsentinel.infrastructure.persistence.in_memory import (
     InMemoryArchiveJobRepository,
     InMemoryBookRepository,
     InMemoryHistoryRepository,
+    InMemoryRefreshTokenRepository,
     InMemoryRelationRepository,
     InMemoryStore,
     InMemoryStoreRepository,
@@ -44,22 +48,29 @@ from bsentinel.infrastructure.persistence.sqlalchemy import (
     SQLArchiveJobRepository,
     SQLBookRepository,
     SQLHistoryRepository,
+    SQLRefreshTokenRepository,
     SQLRelationRepository,
     SQLStoreRepository,
     session_scope,
 )
 from bsentinel.infrastructure.scheduler import LocalScheduler
 from bsentinel.infrastructure.scraping import BuscalibreScraper
+from bsentinel.infrastructure.security import JWTTokenManager
 
 in_memory_store = InMemoryStore()
 metadata_client = OpenLibraryClient()
 scraper_client = BuscalibreScraper()
+token_manager = JWTTokenManager(
+    secret_key=settings.jwt_secret_key,
+    algorithm=settings.jwt_algorithm,
+)
 
 book_repository = InMemoryBookRepository(in_memory_store)
 store_repository = InMemoryStoreRepository(in_memory_store)
 relation_repository = InMemoryRelationRepository(in_memory_store)
 history_repository = InMemoryHistoryRepository(in_memory_store)
 archive_job_repository = InMemoryArchiveJobRepository(in_memory_store)
+refresh_token_repository = InMemoryRefreshTokenRepository(in_memory_store)
 
 catalog_command_service = CatalogCommandService(
     books=book_repository,
@@ -86,6 +97,14 @@ pricing_query_service = PricingQueryService(
 )
 retention_service = RetentionService(jobs=archive_job_repository)
 system_query_service = SystemQueryService(stores=store_repository)
+auth_service = AuthService(
+    admin_username=settings.auth_admin_username,
+    admin_password=settings.auth_admin_password,
+    token_manager=token_manager,
+    refresh_tokens=refresh_token_repository,
+    access_token_expire_minutes=settings.jwt_access_token_expire_minutes,
+    refresh_token_expire_days=settings.jwt_refresh_token_expire_days,
+)
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
@@ -107,9 +126,18 @@ def _build_sql_services(session: AsyncSession) -> dict[str, Any]:
     relations = SQLRelationRepository(session)
     history = SQLHistoryRepository(session)
     jobs = SQLArchiveJobRepository(session)
+    refresh_tokens = SQLRefreshTokenRepository(session)
 
     return {
         "system": SystemQueryService(stores=stores),
+        "auth": AuthService(
+            admin_username=settings.auth_admin_username,
+            admin_password=settings.auth_admin_password,
+            token_manager=token_manager,
+            refresh_tokens=refresh_tokens,
+            access_token_expire_minutes=settings.jwt_access_token_expire_minutes,
+            refresh_token_expire_days=settings.jwt_refresh_token_expire_days,
+        ),
         "catalog_command": CatalogCommandService(
             books=books,
             stores=stores,
@@ -191,6 +219,15 @@ async def get_retention_service(
     return _build_sql_services(session)["retention"]
 
 
+async def get_auth_service(
+    session: AsyncSession | None = Depends(get_optional_session),
+) -> AuthService:
+    if settings.persistence_backend == "in_memory":
+        return auth_service
+    assert session is not None
+    return _build_sql_services(session)["auth"]
+
+
 async def run_scraping_batch() -> int:
     if settings.persistence_backend == "in_memory":
         return await scraping_service.scrape_all_active()
@@ -223,6 +260,7 @@ root_app = FastAPI(
     openapi_tags=[
         {"name": "Root", "description": "Punto de entrada base de la API."},
         {"name": "Health", "description": "Estado operativo del servicio y dependencias."},
+        {"name": "auth", "description": "Autenticación JWT y gestión de tokens."},
         {"name": "system", "description": "Información del estado y capacidades de la versión v1."},
         {"name": "catalog", "description": "Gestión de catálogo de libros rastreados."},
         {"name": "pricing", "description": "Consulta de historial y comparación de precios."},
@@ -282,6 +320,20 @@ async def standard_exception_handler(request: Request, exc: StandardException):
         return _error_response(request, status_code=400, code="UNSUPPORTED_STORE", message=str(exc))
     if isinstance(exc, ValidationError):
         return _error_response(request, status_code=400, code="VALIDATION_ERROR", message=str(exc))
+    if isinstance(exc, AuthenticationError):
+        return _error_response(
+            request,
+            status_code=401,
+            code=getattr(exc, "code", "AUTH_ERROR"),
+            message=str(exc),
+        )
+    if isinstance(exc, ForbiddenError):
+        return _error_response(
+            request,
+            status_code=403,
+            code=getattr(exc, "code", "AUTH_FORBIDDEN"),
+            message=str(exc),
+        )
     return _error_response(request, status_code=400, code="STANDARD_ERROR", message=str(exc))
 
 
@@ -363,5 +415,6 @@ root_app.include_router(
         get_scraping_service,
         get_pricing_service,
         get_retention_service,
+        get_auth_service,
     )
 )

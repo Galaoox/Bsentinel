@@ -1,6 +1,7 @@
 """SQLAlchemy persistence adapters."""
 
 from .archive_jobs import SQLArchiveJobRepository
+from .auth import SQLRefreshTokenRepository
 from .books import SQLBookRepository
 from .history import SQLHistoryRepository
 from .relations import SQLRelationRepository
@@ -17,6 +18,7 @@ __all__ = [
     "SQLArchiveJobRepository",
     "SQLBookRepository",
     "SQLHistoryRepository",
+    "SQLRefreshTokenRepository",
     "SQLRelationRepository",
     "SQLStoreRepository",
     "dispose_engine",

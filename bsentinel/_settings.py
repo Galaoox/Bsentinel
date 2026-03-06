@@ -36,5 +36,13 @@ class Settings(BaseSettings):
     openlibrary_api_url: str = "https://openlibrary.org"
     openlibrary_rate_limit: float = 1.0  # Segundos entre peticiones
 
+    # Configuración de autenticación
+    auth_admin_username: str = "admin"
+    auth_admin_password: str = "changeme"
+    jwt_secret_key: str = "change-me-in-production-32-bytes"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 60
+    jwt_refresh_token_expire_days: int = 7
+
 
 settings = Settings()

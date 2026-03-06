@@ -6,7 +6,7 @@ Backend para rastreo de precios de libros (MVP) con FastAPI y API versionada en 
 
 El proyecto implementa un MVP funcional para entorno local/dev con:
 
-- API pública sin autenticación (temporal en esta fase)
+- API `v1` protegida con autenticación JWT para endpoints funcionales
 - Soporte de tienda: **Buscalibre Colombia** (`www.buscalibre.com.co`)
 - Gestión básica de libros desde URL
 - Historial y comparación de precios
@@ -31,6 +31,9 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 ## Endpoints MVP 🔌
 
 - `GET /health`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
 - `GET /api/v1/system/info`
 - `POST /api/v1/catalog/books`
 - `GET /api/v1/catalog/books`
@@ -45,7 +48,29 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 Nota de contrato de errores v1:
 - Respuesta estándar: `error.code`, `error.message`, `error.details` y `request_id`.
 
+## Autenticación 🔐
+
+- `POST /api/v1/auth/login` usa `application/x-www-form-urlencoded`
+- Credenciales MVP por entorno: `AUTH_ADMIN_USERNAME` y `AUTH_ADMIN_PASSWORD`
+- Tokens configurables con:
+  - `JWT_SECRET_KEY`
+  - `JWT_ALGORITHM`
+  - `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`
+  - `JWT_REFRESH_TOKEN_EXPIRE_DAYS`
+- `/api/v1/**` requiere `Authorization: Bearer <access_token>`, excepto `/api/v1/auth/*`
+
 ## Ejecución local ▶️
+
+Atajo recomendado con `Makefile`:
+
+```bash
+make install
+make db-up
+make migrate
+make run
+```
+
+Equivalente con comandos directos:
 
 1. Instalar dependencias:
 
@@ -53,34 +78,43 @@ Nota de contrato de errores v1:
 uv sync
 ```
 
-2. Aplicar migraciones:
+2. Levantar PostgreSQL:
+
+```bash
+docker-compose up -d postgres
+```
+
+3. Aplicar migraciones:
 
 ```bash
 uv run alembic upgrade head
 ```
 
-3. Levantar API:
+4. Levantar API:
 
 ```bash
 uv run python -m bsentinel.infrastructure.api
 ```
 
-4. Verificar:
+5. Verificar:
 
 - Swagger 📘: `http://localhost:8000/docs`
 - Health ✅: `http://localhost:8000/health`
 
 ## Testing 🧪
 
-Comando principal:
+Con `Makefile`:
+
+```bash
+make test
+make lint
+make check
+```
+
+Comandos directos:
 
 ```bash
 uv run pytest -q
-```
-
-Lint:
-
-```bash
 uv run ruff check .
 ```
 
@@ -96,12 +130,13 @@ Fallback en entorno local con venv:
 - URL DB configurable vía `DATABASE_URL`
 - Migración inicial crea:
   - `stores`, `books`, `book_authors`, `book_categories`, `book_store_relations`,
-  - `price_history`, `price_history_archive`, `archive_jobs`
+  - `price_history`, `price_history_archive`, `archive_jobs`, `revoked_refresh_tokens`
 - Seed inicial automático para la tienda Buscalibre CO
 
 ## Limitaciones actuales ⚠️
 
-- No hay autenticación/autorización en endpoints.
+- Solo existe un usuario admin definido por variables de entorno.
+- `logout` revoca refresh tokens; el access token actual sigue válido hasta expirar.
 - Integración OpenLibrary simplificada (best-effort).
 - `tool.uv.dev-dependencies` está deprecado en `pyproject.toml` y debe migrarse a `dependency-groups.dev`.
 
