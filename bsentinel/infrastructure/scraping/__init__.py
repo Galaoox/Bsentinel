@@ -1,3 +1,3 @@
-from .buscalibre import BuscalibreScraper
+from .configured import ConfiguredStoreScraper
 
-__all__ = ["BuscalibreScraper"]
+__all__ = ["ConfiguredStoreScraper"]

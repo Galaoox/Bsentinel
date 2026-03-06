@@ -13,7 +13,7 @@ from bsentinel.application.ports import (
     StoreRepositoryPort,
 )
 from bsentinel.domain.models import BookStoreRelation, PriceHistoryRecord
-from bsentinel.exceptions import EntityDoesNotExistError
+from bsentinel.exceptions import EntityDoesNotExistError, UnsupportedStoreError
 
 
 class ScrapingService:
@@ -21,17 +21,23 @@ class ScrapingService:
         self,
         *,
         books: BookRepositoryPort,
+        stores: StoreRepositoryPort,
         relations: RelationRepositoryPort,
         history: HistoryRepositoryPort,
         scraper: ScraperPort,
     ) -> None:
         self.books = books
+        self.stores = stores
         self.relations = relations
         self.history = history
         self.scraper = scraper
 
     async def scrape_relation(self, relation: BookStoreRelation) -> None:
-        result = await self.scraper.scrape_book(relation.product_url)
+        store = await self.stores.get(relation.store_id)
+        if not store or not store.is_active:
+            raise UnsupportedStoreError("Unsupported store")
+
+        result = await self.scraper.scrape_book(store, relation.product_url)
         relation.current_price = result.price
         relation.status = result.status
         relation.last_checked = result.checked_at

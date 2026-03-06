@@ -22,6 +22,8 @@ from bsentinel.application.services import (
     PricingQueryService,
     RetentionService,
     ScrapingService,
+    StoreCommandService,
+    StoreQueryService,
     SystemQueryService,
 )
 from bsentinel.exceptions import (
@@ -29,6 +31,7 @@ from bsentinel.exceptions import (
     EntityAlreadyExistsError,
     EntityDoesNotExistError,
     ForbiddenError,
+    ScrapingError,
     StandardException,
     UnsupportedStoreError,
     ValidationError,
@@ -54,12 +57,12 @@ from bsentinel.infrastructure.persistence.sqlalchemy import (
     session_scope,
 )
 from bsentinel.infrastructure.scheduler import LocalScheduler
-from bsentinel.infrastructure.scraping import BuscalibreScraper
+from bsentinel.infrastructure.scraping import ConfiguredStoreScraper
 from bsentinel.infrastructure.security import JWTTokenManager
 
 in_memory_store = InMemoryStore()
 metadata_client = OpenLibraryClient()
-scraper_client = BuscalibreScraper()
+scraper_client = ConfiguredStoreScraper()
 token_manager = JWTTokenManager(
     secret_key=settings.jwt_secret_key,
     algorithm=settings.jwt_algorithm,
@@ -86,6 +89,7 @@ catalog_query_service = CatalogQueryService(
 )
 scraping_service = ScrapingService(
     books=book_repository,
+    stores=store_repository,
     relations=relation_repository,
     history=history_repository,
     scraper=scraper_client,
@@ -97,6 +101,8 @@ pricing_query_service = PricingQueryService(
     history=history_repository,
 )
 retention_service = RetentionService(jobs=archive_job_repository)
+store_command_service = StoreCommandService(stores=store_repository)
+store_query_service = StoreQueryService(stores=store_repository)
 system_query_service = SystemQueryService(stores=store_repository)
 auth_service = AuthService(
     admin_username=settings.auth_admin_username,
@@ -153,6 +159,7 @@ def _build_sql_services(session: AsyncSession) -> dict[str, Any]:
         ),
         "scraping": ScrapingService(
             books=books,
+            stores=stores,
             relations=relations,
             history=history,
             scraper=scraper_client,
@@ -164,6 +171,8 @@ def _build_sql_services(session: AsyncSession) -> dict[str, Any]:
             history=history,
         ),
         "retention": RetentionService(jobs=jobs),
+        "store_command": StoreCommandService(stores=stores),
+        "store_query": StoreQueryService(stores=stores),
     }
 
 
@@ -221,6 +230,24 @@ async def get_retention_service(
     return _build_sql_services(session)["retention"]
 
 
+async def get_store_command_service(
+    session: AsyncSession | None = Depends(get_optional_session),
+) -> StoreCommandService:
+    if settings.persistence_backend == "in_memory":
+        return store_command_service
+    assert session is not None
+    return _build_sql_services(session)["store_command"]
+
+
+async def get_store_query_service(
+    session: AsyncSession | None = Depends(get_optional_session),
+) -> StoreQueryService:
+    if settings.persistence_backend == "in_memory":
+        return store_query_service
+    assert session is not None
+    return _build_sql_services(session)["store_query"]
+
+
 async def get_auth_service(
     session: AsyncSession | None = Depends(get_optional_session),
 ) -> AuthService:
@@ -267,6 +294,7 @@ root_app = FastAPI(
         {"name": "catalog", "description": "Gestión de catálogo de libros rastreados."},
         {"name": "pricing", "description": "Consulta de historial y comparación de precios."},
         {"name": "retention", "description": "Operaciones de archivado y estado de jobs de retención."},
+        {"name": "stores", "description": "Administración de tiendas y reglas de extracción."},
     ],
     lifespan=lifespan,
 )
@@ -322,6 +350,8 @@ async def standard_exception_handler(request: Request, exc: StandardException):
         return _error_response(request, status_code=400, code="UNSUPPORTED_STORE", message=str(exc))
     if isinstance(exc, ValidationError):
         return _error_response(request, status_code=400, code="VALIDATION_ERROR", message=str(exc))
+    if isinstance(exc, ScrapingError):
+        return _error_response(request, status_code=400, code="SCRAPING_ERROR", message=str(exc))
     if isinstance(exc, AuthenticationError):
         return _error_response(
             request,
@@ -417,6 +447,8 @@ root_app.include_router(
         get_scraping_service,
         get_pricing_service,
         get_retention_service,
+        get_store_command_service,
+        get_store_query_service,
         get_auth_service,
     )
 )

@@ -5,10 +5,23 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+
+JSON_VARIANT = JSON().with_variant(JSONB, "postgresql")
 
 
 def uuid_str() -> str:
@@ -24,6 +37,7 @@ class StoreModel(Base):
     country_code: Mapped[str] = mapped_column(String(3), nullable=False)
     scrape_interval_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    extraction_rules: Mapped[dict] = mapped_column(JSON_VARIANT, nullable=False, default=dict)
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

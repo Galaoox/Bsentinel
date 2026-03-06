@@ -13,6 +13,12 @@ class InMemoryStoreRepository:
     def __init__(self, store: InMemoryStore) -> None:
         self.store = store
 
+    async def add(self, store: Store) -> None:
+        self.store.stores[store.id] = store
+
+    async def save(self, store: Store) -> None:
+        self.store.stores[store.id] = store
+
     async def get(self, store_id: UUID) -> Store | None:
         return self.store.stores.get(store_id)
 

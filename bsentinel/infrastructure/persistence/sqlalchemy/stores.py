@@ -16,6 +16,39 @@ class SQLStoreRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def add(self, store: Store) -> None:
+        self.session.add(
+            StoreModel(
+                id=str(store.id),
+                name=store.name,
+                domain=store.domain,
+                country_code=store.country_code,
+                scrape_interval_hours=store.scrape_interval_hours,
+                is_active=store.is_active,
+                extraction_rules=store.extraction_rules,
+                is_deleted=store.is_deleted,
+                created_at=store.created_at,
+                deleted_at=store.deleted_at,
+            )
+        )
+        await self.session.flush()
+
+    async def save(self, store: Store) -> None:
+        model = await self.session.get(StoreModel, str(store.id))
+        if model is None:
+            await self.add(store)
+            return
+
+        model.name = store.name
+        model.domain = store.domain
+        model.country_code = store.country_code
+        model.scrape_interval_hours = store.scrape_interval_hours
+        model.is_active = store.is_active
+        model.extraction_rules = store.extraction_rules
+        model.is_deleted = store.is_deleted
+        model.deleted_at = store.deleted_at
+        await self.session.flush()
+
     async def get(self, store_id: UUID) -> Store | None:
         stmt = select(StoreModel).where(StoreModel.id == str(store_id))
         model = await self.session.scalar(stmt)

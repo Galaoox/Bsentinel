@@ -27,6 +27,7 @@ def to_store(model: StoreModel) -> Store:
         country_code=model.country_code,
         scrape_interval_hours=model.scrape_interval_hours,
         is_active=model.is_active,
+        extraction_rules=model.extraction_rules or {},
         is_deleted=model.is_deleted,
         created_at=model.created_at,
         deleted_at=model.deleted_at,

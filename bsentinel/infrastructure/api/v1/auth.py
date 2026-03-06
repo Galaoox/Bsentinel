@@ -79,3 +79,13 @@ def build_authenticated_dependency(get_auth_service):
         return await require_authenticated_user(auth_service, token)
 
     return dependency
+
+
+def build_admin_dependency(get_auth_service):
+    async def dependency(
+        auth_service: AuthService = Depends(get_auth_service),
+        token: Annotated[str | None, Depends(oauth2_scheme)] = None,
+    ) -> dict:
+        return await require_admin_user(auth_service, token)
+
+    return dependency

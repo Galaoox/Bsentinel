@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from bsentinel.domain.models import Store
+
 
 class BookDetailsPort(Protocol):
     title: str
@@ -18,9 +20,9 @@ class ScrapeResultPort(Protocol):
 
 
 class ScraperPort(Protocol):
-    async def extract_book_details(self, product_url: str) -> BookDetailsPort: ...
+    async def extract_book_details(self, store: Store, product_url: str) -> BookDetailsPort: ...
 
-    async def scrape_book(self, product_url: str) -> ScrapeResultPort: ...
+    async def scrape_book(self, store: Store, product_url: str) -> ScrapeResultPort: ...
 
 
 class MetadataProviderPort(Protocol):

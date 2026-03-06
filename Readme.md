@@ -7,8 +7,9 @@ Backend para rastreo de precios de libros (MVP) con FastAPI y API versionada en 
 El proyecto implementa un MVP funcional para entorno local/dev con:
 
 - API `v1` protegida con autenticación JWT para endpoints funcionales
-- Soporte de tienda: **Buscalibre Colombia** (`www.buscalibre.com.co`)
-- Extracción real de metadatos Buscalibre desde HTML/JSON-LD (SSR)
+- Soporte de tiendas mediante configuración persistida en base de datos
+- Seed inicial de **Buscalibre Colombia** (`www.buscalibre.com.co`)
+- Reglas de extracción por tienda en JSON con fallbacks (`css` / `json_ld`)
 - Gestión de catálogo por ISBN con relaciones libro-tienda
 - Historial y comparación de precios
 - Archivado de historial por job
@@ -22,8 +23,9 @@ Estructura por capas (estilo hexagonal):
 - `bsentinel/domain/`: entidades y reglas de negocio puras
 - `bsentinel/application/`: casos de uso y orquestación
 - `bsentinel/infrastructure/`: API, scheduler, scraping, cliente OpenLibrary y persistencia
-- `bsentinel/infrastructure/api/v1/`: rutas separadas por controlador (`system`, `catalog`, `pricing`, `retention`)
+- `bsentinel/infrastructure/api/v1/`: rutas separadas por controlador (`auth`, `system`, `catalog`, `pricing`, `retention`, `stores`)
 - `bsentinel/infrastructure/persistence/sqlalchemy/`: modelos ORM, repositorios SQL y sesión
+- `bsentinel/infrastructure/scraping/`: scraper configurado por reglas + defaults de tiendas seed
 - `alembic/`: migraciones de esquema y seed inicial
 - `tests/unit` y `tests/integration`: pruebas por nivel
 
@@ -36,6 +38,21 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 - Un mismo libro puede tener múltiples relaciones `book-store`, cada una con su `product_url`, precio actual e historial de precios.
 - La URL del producto ya no pertenece a `Book`; pertenece solo a `BookStoreRelation`.
 - Si intentas registrar de nuevo el mismo libro para la misma tienda, la API responde `ENTITY_ALREADY_EXISTS`.
+- El scraping y la extracción ya no dependen de lógica fija de Buscalibre; usan `Store.extraction_rules` persistidas.
+
+## Administración de Tiendas 🏪
+
+- `POST /api/v1/stores`
+- `GET /api/v1/stores`
+- `GET /api/v1/stores/{store_id}`
+- `PUT /api/v1/stores/{store_id}`
+- `PATCH /api/v1/stores/{store_id}`
+
+Contrato actual:
+- Endpoints protegidos con rol `admin`.
+- `country_code` usa ISO alpha-2 (`CO`, `MX`, `AR`, ...).
+- `extraction_rules` define campos `title`, `authors`, `isbn`, `price` y opcional `availability`.
+- Cada campo usa `sources` ordenados con `kind` (`css` o `json_ld`), `regex` opcional y `normalizer` opcional.
 
 ## Endpoints MVP 🔌
 
@@ -53,6 +70,11 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 - `GET /api/v1/pricing/books/{book_id}/comparison`
 - `POST /api/v1/retention/jobs/archive`
 - `GET /api/v1/retention/jobs/archive/{job_id}`
+- `POST /api/v1/stores`
+- `GET /api/v1/stores`
+- `GET /api/v1/stores/{store_id}`
+- `PUT /api/v1/stores/{store_id}`
+- `PATCH /api/v1/stores/{store_id}`
 
 Nota de contrato de errores v1:
 - Respuesta estándar: `error.code`, `error.message`, `error.details` y `request_id`.
@@ -140,6 +162,7 @@ Fallback en entorno local con venv:
 - Migraciones actuales crean y evolucionan:
   - `stores`, `books`, `book_authors`, `book_categories`, `book_store_relations`,
   - `price_history`, `price_history_archive`, `archive_jobs`, `revoked_refresh_tokens`
+- `stores.extraction_rules` persiste configuración JSON/JSONB por tienda
 - Seed inicial automático para la tienda Buscalibre CO
 
 ## Limitaciones actuales ⚠️
@@ -148,6 +171,7 @@ Fallback en entorno local con venv:
 - `logout` revoca refresh tokens; el access token actual sigue válido hasta expirar.
 - Integración OpenLibrary simplificada (best-effort).
 - Solo se persisten libros cuando la extracción produce un ISBN válido.
+- Aún no existen endpoints de tienda para delete/restore/test/stats.
 - `tool.uv.dev-dependencies` está deprecado en `pyproject.toml` y debe migrarse a `dependency-groups.dev`.
 
 ## Documentación 📚

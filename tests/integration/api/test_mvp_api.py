@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from bsentinel.infrastructure.scraping.rules import build_default_buscalibre_rules
+
 
 def login_headers(client):
     response = client.post(
@@ -97,6 +99,54 @@ def test_create_book_with_unsupported_store_returns_400(client):
     response = client.post("/api/v1/catalog/books", json=payload, headers=login_headers(client))
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "UNSUPPORTED_STORE"
+
+
+def test_store_admin_crud_and_catalog_for_new_domain(client):
+    headers = login_headers(client)
+    create_store = client.post(
+        "/api/v1/stores",
+        json={
+            "name": "Demo Store",
+            "domain": "www.demo.com",
+            "country_code": "CO",
+            "scrape_interval_hours": 12,
+            "is_active": True,
+            "extraction_rules": build_default_buscalibre_rules(),
+        },
+        headers=headers,
+    )
+    assert create_store.status_code == 201
+    store_id = create_store.json()["id"]
+
+    listed = client.get("/api/v1/stores", headers=headers)
+    assert listed.status_code == 200
+    assert any(item["domain"] == "www.demo.com" for item in listed.json()["items"])
+
+    detail = client.get(f"/api/v1/stores/{store_id}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["domain"] == "www.demo.com"
+
+    patched = client.patch(
+        f"/api/v1/stores/{store_id}",
+        json={"scrape_interval_hours": 4, "is_active": True},
+        headers=headers,
+    )
+    assert patched.status_code == 200
+    assert patched.json()["scrape_interval_hours"] == 4
+
+    create_book = client.post(
+        "/api/v1/catalog/books",
+        json={"url": "https://www.demo.com/libro-demo-isbn-9780321146533"},
+        headers=headers,
+    )
+    assert create_book.status_code == 201
+    assert create_book.json()["site"] == "www.demo.com"
+
+
+def test_store_endpoints_require_admin_authentication(client):
+    response = client.get("/api/v1/stores")
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "AUTH_INVALID_TOKEN"
 
 
 def test_delete_and_restore_book(client):

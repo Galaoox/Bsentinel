@@ -49,7 +49,7 @@ class CatalogCommandService:
         if not store or not store.is_active:
             raise UnsupportedStoreError("Unsupported store")
 
-        details = await self.scraper.extract_book_details(product_url)
+        details = await self.scraper.extract_book_details(store, product_url)
         isbn = (details.isbn or "").strip()
         if not isbn:
             raise ValidationError("ISBN is required to register a book")

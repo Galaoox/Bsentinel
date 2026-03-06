@@ -17,7 +17,7 @@ class FakeMetadataProvider:
 
 
 class FakeScraper:
-    async def extract_book_details(self, product_url: str):
+    async def extract_book_details(self, store, product_url: str):
         if "missing-isbn" in product_url:
             return type("BookDetails", (), {"title": "Broken Book", "authors": ["Unknown"], "isbn": None})()
         return type(
@@ -26,7 +26,7 @@ class FakeScraper:
             {"title": "Clean Architecture", "authors": ["Robert C. Martin"], "isbn": "9780134494166"},
         )()
 
-    async def scrape_book(self, product_url: str):
+    async def scrape_book(self, store, product_url: str):
         return type("ScrapeResult", (), {"price": 99.9, "status": ACTIVE, "checked_at": None})()
 
 

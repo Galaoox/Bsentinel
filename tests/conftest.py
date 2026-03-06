@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT_DIR))
 TEST_DB_PATH = Path("/tmp/bsentinel_test.db")
 
 
-class FakeBuscalibreScraper:
-    async def extract_book_details(self, product_url: str):
+class FakeConfiguredScraper:
+    async def extract_book_details(self, store, product_url: str):
         slug = product_url.rstrip("/").split("/")[-1]
         title = slug.replace("-isbn-", " ").replace("-", " ").title()
         isbn = None
@@ -29,13 +29,13 @@ class FakeBuscalibreScraper:
             "BookDetails",
             (),
             {
-                "title": title or "Untitled Book",
+                "title": title or f"Untitled Book From {store.name}",
                 "authors": ["Test Author"],
                 "isbn": isbn,
             },
         )()
 
-    async def scrape_book(self, product_url: str):
+    async def scrape_book(self, store, product_url: str):
         return type(
             "ScrapeResult",
             (),
@@ -50,6 +50,7 @@ class FakeBuscalibreScraper:
 class FakeMetadataProvider:
     async def enrich_by_isbn(self, isbn: str) -> dict:
         return {}
+
 
 
 def _reset_database() -> None:
@@ -75,7 +76,7 @@ def client(monkeypatch):
     importlib.reload(session_module)
     root_app_module = importlib.reload(root_app_module)
 
-    root_app_module.scraper_client = FakeBuscalibreScraper()
+    root_app_module.scraper_client = FakeConfiguredScraper()
     root_app_module.metadata_client = FakeMetadataProvider()
 
     _reset_database()

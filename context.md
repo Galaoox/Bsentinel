@@ -457,3 +457,61 @@ Append a new section at the end using this template:
 - Next steps:
   - Implement store configuration persistence for extraction rules/selectors.
   - Extend the scraper abstraction to support multiple stores through stored extraction rules.
+
+## Session 2026-03-06 08:10 (UTC)
+- Objective: Implement persisted store extraction rules, decouple scraping from Buscalibre-specific runtime logic, and expose an admin store API in v1.
+- Scope: Store domain/persistence changes, Alembic migration for `stores.extraction_rules`, rule-driven scraper implementation, catalog/scraping service refactor, admin routes for stores, test coverage expansion, and documentation alignment.
+- Technical decisions:
+  - Added `Store.extraction_rules` as persisted configuration and kept store country codes on ISO alpha-2.
+  - Chose a fixed structured rule schema for `title`, `authors`, `isbn`, `price`, and optional `availability` instead of arbitrary JSON.
+  - Implemented ordered fallback sources with `css` and `json_ld` kinds plus optional `regex` and `normalizer`.
+  - Moved scraper execution to a store-aware contract so application services resolve the store and the scraper only executes the provided rules.
+  - Added admin-only store CRUD-lite endpoints (`create/list/get/update/patch`) and deferred delete/restore/test/stats to a later phase.
+  - Added `SCRAPING_ERROR` mapping to the API error contract for extraction/fetch failures.
+- Sources consulted (Context7 / official docs):
+  - Context7 SQLAlchemy docs for `JSON` with PostgreSQL `JSONB` variant behavior and ORM change-detection guidance.
+  - Existing repository architecture and route conventions from the local codebase.
+- Files changed:
+  - `bsentinel/domain/models.py`
+  - `bsentinel/application/ports/external.py`
+  - `bsentinel/application/ports/repositories.py`
+  - `bsentinel/application/services/catalog.py`
+  - `bsentinel/application/services/pricing.py`
+  - `bsentinel/application/services/stores.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/auth.py`
+  - `bsentinel/infrastructure/api/v1/router.py`
+  - `bsentinel/infrastructure/api/v1/schemas.py`
+  - `bsentinel/infrastructure/api/v1/stores.py`
+  - `bsentinel/infrastructure/persistence/in_memory/store.py`
+  - `bsentinel/infrastructure/persistence/in_memory/stores.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/models.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/mappers.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/stores.py`
+  - `bsentinel/infrastructure/scraping/configured.py`
+  - `bsentinel/infrastructure/scraping/rules.py`
+  - `alembic/versions/0004_add_store_extraction_rules.py`
+  - `tests/conftest.py`
+  - `tests/integration/api/test_mvp_api.py`
+  - `tests/integration/api/test_openapi_schema.py`
+  - `tests/unit/application/test_catalog_services.py`
+  - `tests/unit/application/test_store_services.py`
+  - `tests/unit/infrastructure/test_configured_scraper.py`
+  - `Readme.md`
+  - `PROGRESS.md`
+  - `context.md`
+- Verification commands:
+  - `make lint`
+  - `make test`
+- Results:
+  - Lint passed.
+  - Test suite passed: `36 passed`.
+  - API v1 now exposes admin store management and uses persisted extraction rules in the runtime path.
+- Risks / technical debt:
+  - Only the Buscalibre CO seed is validated by default; more stores still need real extraction configs.
+  - Store delete/restore/test/stats endpoints are still deferred.
+  - `tool.uv.dev-dependencies` remains deprecated in `pyproject.toml`.
+- Next steps:
+  - Decide whether store delete/restore/test/stats belong in the next MVP increment.
+  - Add more real store configurations and regression cases around HTML structure drift.
+  - Keep `Readme.md` and `context.md` updated after the next implementation session.
