@@ -19,9 +19,9 @@ class InMemoryBookRepository:
     async def get(self, book_id: UUID) -> Book | None:
         return self.store.books.get(book_id)
 
-    async def get_by_source_url(self, source_url: str) -> Book | None:
+    async def get_by_isbn(self, isbn: str) -> Book | None:
         for book in self.store.books.values():
-            if book.source_url == source_url:
+            if book.isbn == isbn:
                 return book
         return None
 

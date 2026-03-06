@@ -1,7 +1,7 @@
 """Application ports package."""
 
 from .auth import RefreshTokenRepositoryPort, TokenManagerPort
-from .external import MetadataProviderPort, ScrapeResultPort, ScraperPort
+from .external import BookDetailsPort, MetadataProviderPort, ScrapeResultPort, ScraperPort
 from .repositories import (
     ArchiveJobRepositoryPort,
     BookRepositoryPort,
@@ -12,6 +12,7 @@ from .repositories import (
 
 __all__ = [
     "ArchiveJobRepositoryPort",
+    "BookDetailsPort",
     "BookRepositoryPort",
     "HistoryRepositoryPort",
     "MetadataProviderPort",

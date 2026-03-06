@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,41 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
 TEST_DB_PATH = Path("/tmp/bsentinel_test.db")
+
+
+class FakeBuscalibreScraper:
+    async def extract_book_details(self, product_url: str):
+        slug = product_url.rstrip("/").split("/")[-1]
+        title = slug.replace("-isbn-", " ").replace("-", " ").title()
+        isbn = None
+        marker = "isbn-"
+        if marker in product_url:
+            isbn = product_url.split(marker, 1)[1].split("/")[0].split("-")[0]
+        return type(
+            "BookDetails",
+            (),
+            {
+                "title": title or "Untitled Book",
+                "authors": ["Test Author"],
+                "isbn": isbn,
+            },
+        )()
+
+    async def scrape_book(self, product_url: str):
+        return type(
+            "ScrapeResult",
+            (),
+            {
+                "price": 42.5,
+                "status": "activo",
+                "checked_at": datetime.now(timezone.utc),
+            },
+        )()
+
+
+class FakeMetadataProvider:
+    async def enrich_by_isbn(self, isbn: str) -> dict:
+        return {}
 
 
 def _reset_database() -> None:
@@ -38,6 +74,9 @@ def client(monkeypatch):
     bsentinel_pkg.settings = settings_module.settings
     importlib.reload(session_module)
     root_app_module = importlib.reload(root_app_module)
+
+    root_app_module.scraper_client = FakeBuscalibreScraper()
+    root_app_module.metadata_client = FakeMetadataProvider()
 
     _reset_database()
     with TestClient(root_app_module.root_app) as test_client:

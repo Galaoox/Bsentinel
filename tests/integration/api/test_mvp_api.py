@@ -66,21 +66,30 @@ def test_create_book_and_list_flow(client):
     body = create_response.json()
     UUID(body["book_id"])
     assert body["site"] == "www.buscalibre.com.co"
+    assert body["isbn"] == "9780156012195"
 
     list_response = client.get("/api/v1/catalog/books", headers=headers)
     assert list_response.status_code == 200
     listed = list_response.json()["items"]
     assert len(listed) == 1
     assert listed[0]["status"] == "activo"
+    assert listed[0]["title"] == "Libro El Principito 9780156012195"
 
 
-def test_create_duplicate_book_returns_409(client):
-    payload = {"url": "https://www.buscalibre.com.co/libro-pragmatic-programmer"}
+def test_create_duplicate_book_relation_returns_409(client):
+    payload = {"url": "https://www.buscalibre.com.co/libro-pragmatic-programmer-isbn-9780135957059"}
     headers = login_headers(client)
     assert client.post("/api/v1/catalog/books", json=payload, headers=headers).status_code == 201
     duplicate = client.post("/api/v1/catalog/books", json=payload, headers=headers)
     assert duplicate.status_code == 409
     assert duplicate.json()["error"]["code"] == "ENTITY_ALREADY_EXISTS"
+
+
+def test_create_book_without_isbn_returns_400(client):
+    payload = {"url": "https://www.buscalibre.com.co/libro-sin-isbn"}
+    response = client.post("/api/v1/catalog/books", json=payload, headers=login_headers(client))
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 def test_create_book_with_unsupported_store_returns_400(client):
@@ -94,7 +103,7 @@ def test_delete_and_restore_book(client):
     headers = login_headers(client)
     create = client.post(
         "/api/v1/catalog/books",
-        json={"url": "https://www.buscalibre.com.co/libro-clean-code"},
+        json={"url": "https://www.buscalibre.com.co/libro-clean-code-isbn-9780132350884"},
         headers=headers,
     )
     book_id = create.json()["book_id"]

@@ -11,6 +11,7 @@ from bsentinel.application.ports import (
     BookRepositoryPort,
     MetadataProviderPort,
     RelationRepositoryPort,
+    ScraperPort,
     StoreRepositoryPort,
 )
 from bsentinel.domain.models import Book, BookStoreRelation
@@ -21,10 +22,6 @@ from bsentinel.exceptions import (
     ValidationError,
 )
 
-from ._identity import extract_book_identity
-
-BUSCALIBRE_DOMAINS = {"www.buscalibre.com.co", "buscalibre.com.co"}
-
 
 class CatalogCommandService:
     def __init__(
@@ -34,32 +31,36 @@ class CatalogCommandService:
         stores: StoreRepositoryPort,
         relations: RelationRepositoryPort,
         metadata: MetadataProviderPort,
+        scraper: ScraperPort,
     ) -> None:
         self.books = books
         self.stores = stores
         self.relations = relations
         self.metadata = metadata
+        self.scraper = scraper
 
-    async def create_book_from_url(self, product_url: str) -> tuple[Book, BookStoreRelation]:
+    async def create_book_from_url(self, product_url: str) -> tuple[Book, BookStoreRelation, str]:
         parsed = urlparse(product_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValidationError("Invalid URL")
 
         domain = parsed.netloc.lower()
-        if domain not in BUSCALIBRE_DOMAINS:
-            raise UnsupportedStoreError("Unsupported store")
-
-        if await self.books.get_by_source_url(product_url):
-            raise EntityAlreadyExistsError("Book already exists")
-
-        store = await self.stores.get_by_domain("www.buscalibre.com.co")
+        store = await self.stores.get_by_domain(domain)
         if not store or not store.is_active:
             raise UnsupportedStoreError("Unsupported store")
 
-        title, authors, isbn = extract_book_identity(product_url)
-        book = Book(title=title, authors=authors, isbn=isbn, source_url=product_url)
+        details = await self.scraper.extract_book_details(product_url)
+        isbn = (details.isbn or "").strip()
+        if not isbn:
+            raise ValidationError("ISBN is required to register a book")
 
-        if isbn:
+        book = await self.books.get_by_isbn(isbn)
+        if not book:
+            book = Book(
+                title=details.title,
+                authors=details.authors,
+                isbn=isbn,
+            )
             metadata = await self.metadata.enrich_by_isbn(isbn)
             if metadata:
                 book.publisher = metadata.get("publisher")
@@ -69,11 +70,15 @@ class CatalogCommandService:
                 book.description = metadata.get("description")
                 book.image_url = metadata.get("image_url")
                 book.categories = metadata.get("categories") or []
+            await self.books.add(book)
 
-        await self.books.add(book)
+        existing_relations = await self.relations.list_for_book(book.id)
+        if any(relation.store_id == store.id for relation in existing_relations):
+            raise EntityAlreadyExistsError("Book-store relation already exists")
+
         relation = BookStoreRelation(book_id=book.id, store_id=store.id, product_url=product_url)
         await self.relations.add(relation)
-        return book, relation
+        return book, relation, store.domain
 
     async def delete_book(self, book_id: UUID) -> None:
         book = await self.books.get(book_id)

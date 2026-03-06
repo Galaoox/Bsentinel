@@ -40,7 +40,6 @@ class Book:
     pages: int | None = None
     description: str | None = None
     image_url: str | None = None
-    source_url: str = ""
     is_deleted: bool = False
     created_at: datetime = field(default_factory=now_utc)
     deleted_at: datetime | None = None

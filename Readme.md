@@ -8,7 +8,8 @@ El proyecto implementa un MVP funcional para entorno local/dev con:
 
 - API `v1` protegida con autenticación JWT para endpoints funcionales
 - Soporte de tienda: **Buscalibre Colombia** (`www.buscalibre.com.co`)
-- Gestión básica de libros desde URL
+- Extracción real de metadatos Buscalibre desde HTML/JSON-LD (SSR)
+- Gestión de catálogo por ISBN con relaciones libro-tienda
 - Historial y comparación de precios
 - Archivado de historial por job
 - Scheduler local con APScheduler
@@ -27,6 +28,14 @@ Estructura por capas (estilo hexagonal):
 - `tests/unit` y `tests/integration`: pruebas por nivel
 
 Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único por versión.
+
+## Reglas Actuales de Catálogo 📘
+
+- `POST /api/v1/catalog/books` resuelve la tienda por dominio y no por hardcode en el servicio.
+- El libro se identifica por `ISBN`; si no se puede extraer un ISBN válido, la API responde `VALIDATION_ERROR` y no persiste el libro.
+- Un mismo libro puede tener múltiples relaciones `book-store`, cada una con su `product_url`, precio actual e historial de precios.
+- La URL del producto ya no pertenece a `Book`; pertenece solo a `BookStoreRelation`.
+- Si intentas registrar de nuevo el mismo libro para la misma tienda, la API responde `ENTITY_ALREADY_EXISTS`.
 
 ## Endpoints MVP 🔌
 
@@ -128,7 +137,7 @@ Fallback en entorno local con venv:
 
 - Backend por defecto: `PERSISTENCE_BACKEND=sql`
 - URL DB configurable vía `DATABASE_URL`
-- Migración inicial crea:
+- Migraciones actuales crean y evolucionan:
   - `stores`, `books`, `book_authors`, `book_categories`, `book_store_relations`,
   - `price_history`, `price_history_archive`, `archive_jobs`, `revoked_refresh_tokens`
 - Seed inicial automático para la tienda Buscalibre CO
@@ -138,6 +147,7 @@ Fallback en entorno local con venv:
 - Solo existe un usuario admin definido por variables de entorno.
 - `logout` revoca refresh tokens; el access token actual sigue válido hasta expirar.
 - Integración OpenLibrary simplificada (best-effort).
+- Solo se persisten libros cuando la extracción produce un ISBN válido.
 - `tool.uv.dev-dependencies` está deprecado en `pyproject.toml` y debe migrarse a `dependency-groups.dev`.
 
 ## Documentación 📚

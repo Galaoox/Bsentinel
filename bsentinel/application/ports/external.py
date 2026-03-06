@@ -5,6 +5,12 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 
+class BookDetailsPort(Protocol):
+    title: str
+    authors: list[str]
+    isbn: str | None
+
+
 class ScrapeResultPort(Protocol):
     price: float
     status: str
@@ -12,6 +18,8 @@ class ScrapeResultPort(Protocol):
 
 
 class ScraperPort(Protocol):
+    async def extract_book_details(self, product_url: str) -> BookDetailsPort: ...
+
     async def scrape_book(self, product_url: str) -> ScrapeResultPort: ...
 
 

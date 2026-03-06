@@ -48,7 +48,6 @@ def to_book(model: BookModel) -> Book:
         pages=model.pages,
         description=model.description,
         image_url=model.image_url,
-        source_url=model.source_url,
         is_deleted=model.is_deleted,
         created_at=model.created_at,
         deleted_at=model.deleted_at,
@@ -101,7 +100,6 @@ def apply_book_details(model: BookModel, book: Book) -> None:
     model.pages = book.pages
     model.description = book.description
     model.image_url = book.image_url
-    model.source_url = book.source_url
     model.is_deleted = book.is_deleted
     model.deleted_at = book.deleted_at
 

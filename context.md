@@ -413,3 +413,47 @@ Append a new section at the end using this template:
   - Migrate UV dev dependencies to `dependency-groups.dev`.
   - Introduce persisted users/roles if the MVP moves beyond single-admin auth.
   - Keep `Readme.md` and `context.md` updated after each implementation session.
+
+## Session 2026-03-06 05:40 (UTC)
+- Objective: Fix catalog modeling and Buscalibre extraction so books are not built from URL slugs or coupled to a single hardcoded store path.
+- Scope: Catalog creation flow, Buscalibre scraper, book persistence model, SQLAlchemy save path, tests, and migration alignment.
+- Technical decisions:
+  - Removed `source_url` from `Book`; product URLs now belong only to `BookStoreRelation`.
+  - Catalog creation now resolves the store by request URL domain through the store repository.
+  - Book identity is now based on ISBN; books without a valid extracted ISBN are rejected.
+  - Duplicate detection now targets the `book + store` relation instead of the old `book source_url` shape.
+  - Buscalibre metadata extraction now reads real HTML/JSON-LD instead of deriving title/authors from the URL slug.
+  - SQLAlchemy update flow was adjusted to safely replace child author/category collections without unique constraint collisions.
+- Sources consulted (Context7 / official docs):
+  - Context7 `/scrapy/scrapy` for `Selector(...).css(...).get()/getall()` usage on raw HTML parsing.
+  - Buscalibre live HTML inspection through HTTP fetches to validate JSON-LD `Product` availability.
+- Files changed:
+  - `bsentinel/application/ports/external.py`
+  - `bsentinel/application/ports/repositories.py`
+  - `bsentinel/application/services/catalog.py`
+  - `bsentinel/domain/models.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/catalog.py`
+  - `bsentinel/infrastructure/persistence/in_memory/books.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/books.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/mappers.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/models.py`
+  - `bsentinel/infrastructure/scraping/buscalibre.py`
+  - `alembic/versions/0003_remove_book_source_url.py`
+  - `tests/conftest.py`
+  - `tests/integration/api/test_mvp_api.py`
+  - `tests/unit/application/test_catalog_services.py`
+  - `Readme.md`
+- Verification commands:
+  - `make lint`
+  - `make test`
+- Results:
+  - Lint passed.
+  - Test suite passed: `29 passed`.
+  - Catalog behavior now matches the intended aggregate shape: one book, many store relations, relation-scoped product URLs.
+- Risks / technical debt:
+  - Store-specific selector/rule configuration still lives in code for Buscalibre; it is not yet persisted as store-managed JSON configuration.
+  - Playwright MCP requires a restarted Codex session to fully pick up the switch to `chromium`.
+- Next steps:
+  - Implement store configuration persistence for extraction rules/selectors.
+  - Extend the scraper abstraction to support multiple stores through stored extraction rules.

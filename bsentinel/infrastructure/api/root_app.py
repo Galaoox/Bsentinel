@@ -77,6 +77,7 @@ catalog_command_service = CatalogCommandService(
     stores=store_repository,
     relations=relation_repository,
     metadata=metadata_client,
+    scraper=scraper_client,
 )
 catalog_query_service = CatalogQueryService(
     books=book_repository,
@@ -143,6 +144,7 @@ def _build_sql_services(session: AsyncSession) -> dict[str, Any]:
             stores=stores,
             relations=relations,
             metadata=metadata_client,
+            scraper=scraper_client,
         ),
         "catalog_query": CatalogQueryService(
             books=books,
