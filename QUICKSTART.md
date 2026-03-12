@@ -7,6 +7,7 @@ This guide starts the current MVP locally with PostgreSQL, Alembic migrations, a
 1. Python 3.12+
 2. `uv`
 3. Docker and Docker Compose
+4. Chromium runtime for Playwright/Scrapling (`make browsers-install`)
 
 ## 1. Create local environment file
 
@@ -34,6 +35,14 @@ JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
 SCRAPING_DELAY=2.0
 SCRAPING_TIMEOUT=30
 SCRAPING_MAX_RETRIES=3
+SCRAPING_BROWSER_ENABLED=true
+SCRAPING_BROWSER_HEADLESS=true
+SCRAPING_BROWSER_TIMEOUT_MS=45000
+SCRAPING_BROWSER_MAX_PAGES=3
+SCRAPING_BROWSER_DISABLE_RESOURCES=true
+SCRAPING_BROWSER_NETWORK_IDLE=true
+SCRAPING_BROWSER_SOLVE_CLOUDFLARE=false
+SCRAPING_BROWSER_REAL_CHROME=false
 SCHEDULER_SCRAPE_INTERVAL_HOURS=6
 
 OPENLIBRARY_API_URL=https://openlibrary.org
@@ -47,19 +56,25 @@ ENV
 make install
 ```
 
-## 3. Start PostgreSQL
+## 3. Install Chromium for Scrapling
+
+```bash
+make browsers-install
+```
+
+## 4. Start PostgreSQL
 
 ```bash
 make db-up
 ```
 
-## 4. Apply migrations
+## 5. Apply migrations
 
 ```bash
 make migrate
 ```
 
-## 5. Start the API
+## 6. Start the API
 
 ```bash
 make run
@@ -71,14 +86,14 @@ Fallback without `uv`:
 .venv/bin/python -m bsentinel.infrastructure.api
 ```
 
-## 6. Verify the service
+## 7. Verify the service
 
 - Root: `http://localhost:8000/`
 - Health: `http://localhost:8000/health`
 - Swagger: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
-## 7. Authenticate in Swagger
+## 8. Authenticate in Swagger
 
 Public endpoints:
 - `/`
@@ -104,7 +119,7 @@ Then use the returned `access_token` as:
 Authorization: Bearer <access_token>
 ```
 
-## 8. Current route groups
+## 9. Current route groups
 
 - `GET /api/v1/system/info`
 - `POST /api/v1/catalog/books`
@@ -117,7 +132,7 @@ Authorization: Bearer <access_token>
 - `POST /api/v1/retention/jobs/archive`
 - `GET /api/v1/retention/jobs/archive/{job_id}`
 
-## 9. Development checks
+## 10. Development checks
 
 ```bash
 make lint
@@ -144,6 +159,14 @@ Run:
 
 ```bash
 uv run alembic upgrade head
+```
+
+### Browser runtime not installed
+
+Run:
+
+```bash
+make browsers-install
 ```
 
 ### Invalid admin credentials

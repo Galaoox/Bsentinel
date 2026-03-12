@@ -515,3 +515,86 @@ Append a new section at the end using this template:
   - Decide whether store delete/restore/test/stats belong in the next MVP increment.
   - Add more real store configurations and regression cases around HTML structure drift.
   - Keep `Readme.md` and `context.md` updated after the next implementation session.
+
+## Session 2026-03-11 23:40 (America/Bogota)
+- Objective: Replace the `httpx` scraping runtime with Scrapling `AsyncStealthySession` as the primary fetch path and wire a shared browser session into the API lifecycle.
+- Scope: Scraper runtime refactor, FastAPI startup/shutdown wiring, browser session adapter, scraper settings, dependency updates, unit tests, and local setup docs.
+- Technical decisions:
+  - Chose Scrapling with `fetchers` extras as the primary runtime for store scraping.
+  - Reused one shared `AsyncStealthySession` through a `StealthBrowserSession` adapter instead of creating browser instances per request.
+  - Kept the existing extraction-rules engine and diagnostics model; only the fetch/runtime layer changed.
+  - Used bundled Chromium as the default runtime (`make browsers-install`) and left `real_chrome` configurable by env.
+  - Preserved `httpx` only for non-scraping integrations such as OpenLibrary.
+- Sources consulted (Context7 / official docs):
+  - Context7 Scrapling docs for `AsyncStealthySession`, response metadata, and installation requirements.
+  - Local repository bootstrap and service wiring in `root_app.py`.
+- Files changed:
+  - `pyproject.toml`
+  - `uv.lock`
+  - `bsentinel/_settings.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/scraping/__init__.py`
+  - `bsentinel/infrastructure/scraping/browser.py`
+  - `bsentinel/infrastructure/scraping/configured.py`
+  - `tests/unit/infrastructure/test_browser_session.py`
+  - `tests/unit/infrastructure/test_configured_scraper.py`
+  - `Readme.md`
+  - `QUICKSTART.md`
+  - `context.md`
+- Verification commands:
+  - `make lint`
+  - `make test`
+  - `uv run python - <<'PY' ...` smoke test with `StealthBrowserSession` against Buscalibre
+- Results:
+  - Lint passed.
+  - Test suite passed: `44 passed`.
+  - Store scraping now depends on a shared Scrapling browser runtime instead of per-request `httpx` fetching.
+  - Real scrape smoke test passed against `https://www.buscalibre.com.co/libro-al-sur-de-la-frontera-al-oeste-del-sol/9786287577107/p/55688855` and extracted title, authors, and ISBN successfully.
+- Risks / technical debt:
+  - Local/dev startup now depends on Chromium being installed before `make run`.
+  - `tool.uv.dev-dependencies` remains deprecated in `pyproject.toml`.
+- Next steps:
+  - Tune store extraction rules only after validating the new browser runtime output.
+  - Keep `Readme.md` and `context.md` updated after the next implementation session.
+
+## Session 2026-03-11 23:20 (UTC)
+- Objective: Replace the store scraper HTTP runtime with Scrapling using a shared stealth browser session, while keeping the rule-based extraction contract intact.
+- Scope: Scrapling dependency integration, shared browser session lifecycle, rule-driven scraper refactor to use Scrapling responses, startup/test wiring, developer command updates, and documentation alignment.
+- Technical decisions:
+  - Replaced `httpx` in `ConfiguredStoreScraper` with Scrapling as the primary fetch runtime and kept `httpx` only for non-store integrations such as OpenLibrary.
+  - Introduced `StealthBrowserSession` to encapsulate a shared `AsyncStealthySession` instead of coupling browser lifecycle directly to the scraper implementation.
+  - Kept extraction rules, JSON-LD parsing, and diagnostics unchanged at the contract level; only the fetch/runtime layer changed.
+  - Added browser runtime settings with bundled Chromium defaults and disabled browser startup in tests through `SCRAPING_BROWSER_ENABLED=false`.
+  - Added `make browsers-install` as the standard developer entrypoint to install the required Chromium runtime.
+- Sources consulted (Context7 / official docs):
+  - Context7 Scrapling docs for `StealthyFetcher`, `AsyncStealthySession`, response object metadata, and browser session reuse guidance.
+- Files changed:
+  - `pyproject.toml`
+  - `uv.lock`
+  - `Makefile`
+  - `bsentinel/_settings.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/scraping/__init__.py`
+  - `bsentinel/infrastructure/scraping/browser.py`
+  - `bsentinel/infrastructure/scraping/configured.py`
+  - `tests/conftest.py`
+  - `tests/unit/infrastructure/test_configured_scraper.py`
+  - `Readme.md`
+  - `QUICKSTART.md`
+  - `AGENTS.md`
+  - `context.md`
+- Verification commands:
+  - `make lint`
+  - `make test`
+- Results:
+  - Lint passed.
+  - Test suite passed: `44 passed`.
+  - The app now uses Scrapling/Chromium as the primary store scraping runtime and keeps tests isolated from browser startup.
+- Risks / technical debt:
+  - Real browser startup is now an explicit runtime dependency; environments must install Chromium before `make run`.
+  - Browser session health is not yet surfaced in `/health`.
+  - The `tool.uv.dev-dependencies` deprecation in `pyproject.toml` remains pending.
+- Next steps:
+  - Validate the failing Buscalibre URLs against the live Scrapling runtime after installing Chromium.
+  - Decide whether `/health` should expose browser readiness explicitly.
+  - Keep `Readme.md` and `context.md` updated after the next implementation session.

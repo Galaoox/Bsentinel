@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bsentinel import settings
 from bsentinel._logging import configure_logging
+from bsentinel._logging_context import reset_request_id, set_request_id
 from bsentinel.application.services import (
     AuthService,
     CatalogCommandService,
@@ -58,11 +60,23 @@ from bsentinel.infrastructure.persistence.sqlalchemy import (
 )
 from bsentinel.infrastructure.scheduler import LocalScheduler
 from bsentinel.infrastructure.scraping import ConfiguredStoreScraper
+from bsentinel.infrastructure.scraping.browser import StealthBrowserSession
 from bsentinel.infrastructure.security import JWTTokenManager
+
+logger = logging.getLogger(__name__)
 
 in_memory_store = InMemoryStore()
 metadata_client = OpenLibraryClient()
-scraper_client = ConfiguredStoreScraper()
+browser_session = StealthBrowserSession(
+    headless=settings.scraping_browser_headless,
+    timeout_ms=settings.scraping_browser_timeout_ms,
+    max_pages=settings.scraping_browser_max_pages,
+    disable_resources=settings.scraping_browser_disable_resources,
+    network_idle=settings.scraping_browser_network_idle,
+    solve_cloudflare=settings.scraping_browser_solve_cloudflare,
+    real_chrome=settings.scraping_browser_real_chrome,
+)
+scraper_client = ConfiguredStoreScraper(browser_session=browser_session)
 token_manager = JWTTokenManager(
     secret_key=settings.jwt_secret_key,
     algorithm=settings.jwt_algorithm,
@@ -274,12 +288,18 @@ scheduler = LocalScheduler(run_scraping_batch)
 async def lifespan(app: FastAPI):
     """Gestiona el ciclo de vida de la aplicación."""
     configure_logging()
+    if settings.scraping_browser_enabled:
+        await browser_session.start()
+        app.state.browser_session = browser_session
     scheduler.start(interval_hours=settings.scheduler_scrape_interval_hours)
     app.state.scheduler = scheduler
     if settings.persistence_backend == "in_memory":
         app.state.store = in_memory_store
-    yield
-    scheduler.shutdown()
+    try:
+        yield
+    finally:
+        scheduler.shutdown()
+        await browser_session.close()
 
 
 root_app = FastAPI(
@@ -334,14 +354,32 @@ async def add_request_id(request: Request, call_next):
     """Añade un ID único a cada petición."""
     request_id = str(uuid.uuid4())
     request.state.request_id = request_id
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
-    return response
+    token = set_request_id(request_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        reset_request_id(token)
 
 
 @root_app.exception_handler(StandardException)
 async def standard_exception_handler(request: Request, exc: StandardException):
     """Mapea excepciones de negocio a contrato de error API."""
+    if isinstance(exc, ScrapingError):
+        logger.warning(
+            "Scraping request failed",
+            extra={
+                "request_id": getattr(request.state, "request_id", None),
+                "method": request.method,
+                "path": str(request.url.path),
+                "error_code": "SCRAPING_ERROR",
+                "error_message": str(exc),
+                "scraping_reason": getattr(exc, "reason", None),
+                "scraping_diagnostics": getattr(exc, "diagnostics", {}),
+            },
+        )
+        return _error_response(request, status_code=400, code="SCRAPING_ERROR", message=str(exc))
     if isinstance(exc, EntityDoesNotExistError):
         return _error_response(request, status_code=404, code="ENTITY_NOT_FOUND", message=str(exc))
     if isinstance(exc, EntityAlreadyExistsError):
@@ -350,8 +388,6 @@ async def standard_exception_handler(request: Request, exc: StandardException):
         return _error_response(request, status_code=400, code="UNSUPPORTED_STORE", message=str(exc))
     if isinstance(exc, ValidationError):
         return _error_response(request, status_code=400, code="VALIDATION_ERROR", message=str(exc))
-    if isinstance(exc, ScrapingError):
-        return _error_response(request, status_code=400, code="SCRAPING_ERROR", message=str(exc))
     if isinstance(exc, AuthenticationError):
         return _error_response(
             request,
@@ -423,7 +459,7 @@ async def health_check():
         "version": settings.app_version,
         "environment": settings.app_environment,
         "db": "in-memory" if settings.persistence_backend == "in_memory" else "sqlalchemy",
-        "scraping": "ready",
+        "scraping": "ready" if browser_session.is_started else "not_initialized",
         "openlibrary": "ready",
     }
 

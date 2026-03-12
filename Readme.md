@@ -25,7 +25,7 @@ Estructura por capas (estilo hexagonal):
 - `bsentinel/infrastructure/`: API, scheduler, scraping, cliente OpenLibrary y persistencia
 - `bsentinel/infrastructure/api/v1/`: rutas separadas por controlador (`auth`, `system`, `catalog`, `pricing`, `retention`, `stores`)
 - `bsentinel/infrastructure/persistence/sqlalchemy/`: modelos ORM, repositorios SQL y sesión
-- `bsentinel/infrastructure/scraping/`: scraper configurado por reglas + defaults de tiendas seed
+- `bsentinel/infrastructure/scraping/`: scraper configurado por reglas + runtime principal con Scrapling/Chromium
 - `alembic/`: migraciones de esquema y seed inicial
 - `tests/unit` y `tests/integration`: pruebas por nivel
 
@@ -38,7 +38,7 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 - Un mismo libro puede tener múltiples relaciones `book-store`, cada una con su `product_url`, precio actual e historial de precios.
 - La URL del producto ya no pertenece a `Book`; pertenece solo a `BookStoreRelation`.
 - Si intentas registrar de nuevo el mismo libro para la misma tienda, la API responde `ENTITY_ALREADY_EXISTS`.
-- El scraping y la extracción ya no dependen de lógica fija de Buscalibre; usan `Store.extraction_rules` persistidas.
+- El scraping y la extracción ya no dependen de lógica fija de Buscalibre; usan `Store.extraction_rules` persistidas y un navegador compartido con Scrapling `AsyncStealthySession`.
 
 ## Administración de Tiendas 🏪
 
@@ -96,6 +96,7 @@ Atajo recomendado con `Makefile`:
 
 ```bash
 make install
+make browsers-install
 make db-up
 make migrate
 make run
@@ -109,28 +110,44 @@ Equivalente con comandos directos:
 uv sync
 ```
 
-2. Levantar PostgreSQL:
+2. Instalar Chromium para el scraper:
+
+```bash
+make browsers-install
+```
+
+3. Levantar PostgreSQL:
 
 ```bash
 docker-compose up -d postgres
 ```
 
-3. Aplicar migraciones:
+4. Aplicar migraciones:
 
 ```bash
 uv run alembic upgrade head
 ```
 
-4. Levantar API:
+5. Levantar API:
 
 ```bash
 uv run python -m bsentinel.infrastructure.api
 ```
 
-5. Verificar:
+6. Verificar:
 
 - Swagger 📘: `http://localhost:8000/docs`
 - Health ✅: `http://localhost:8000/health`
+
+Variables nuevas del runtime de scraping:
+
+- `SCRAPING_BROWSER_HEADLESS`
+- `SCRAPING_BROWSER_TIMEOUT_MS`
+- `SCRAPING_BROWSER_MAX_PAGES`
+- `SCRAPING_BROWSER_DISABLE_RESOURCES`
+- `SCRAPING_BROWSER_NETWORK_IDLE`
+- `SCRAPING_BROWSER_SOLVE_CLOUDFLARE`
+- `SCRAPING_BROWSER_REAL_CHROME`
 
 ## Testing 🧪
 
@@ -168,6 +185,7 @@ Fallback en entorno local con venv:
 ## Limitaciones actuales ⚠️
 
 - Solo existe un usuario admin definido por variables de entorno.
+- El runtime de scraping requiere Chromium instalado (`make browsers-install`).
 - `logout` revoca refresh tokens; el access token actual sigue válido hasta expirar.
 - Integración OpenLibrary simplificada (best-effort).
 - Solo se persisten libros cuando la extracción produce un ISBN válido.

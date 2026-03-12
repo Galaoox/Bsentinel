@@ -28,6 +28,17 @@ class DatabaseError(StandardError):
 class ScrapingError(StandardError):
     """Se lanza cuando hay un error durante scraping."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str | None = None,
+        diagnostics: dict | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.diagnostics = diagnostics or {}
+
 
 class InvalidURLError(StandardError):
     """Se lanza cuando una URL es inválida."""

@@ -5,26 +5,33 @@ import logging.config
 
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
+from ._logging_context import RequestContextFilter
 from ._settings import settings
 
 config = {
-    "disable_existing_loggers": True,
+    "disable_existing_loggers": False,
     "version": 1,
     "formatters": {
         "json": {
             "()": lambda: JsonFormatter(
                 # Available attributes
                 # https://docs.python.org/3/library/logging.html#logrecord-attributes
-                fmt="%(asctime)s %(levelname)s %(message)s %(name)s",
+                fmt="%(asctime)s %(levelname)s %(message)s %(name)s %(request_id)s",
                 rename_fields={"name": "logger.name"},
                 json_indent=2 if settings.app_environment == "local" else None,
             )
+        },
+    },
+    "filters": {
+        "request_context": {
+            "()": RequestContextFilter,
         },
     },
     "handlers": {
         "console": {
             "formatter": "json",
             "class": "logging.StreamHandler",
+            "filters": ["request_context"],
         },
     },
     "root": {

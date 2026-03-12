@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     scraping_delay: float = 2.0  # Segundos entre peticiones a la misma tienda
     scraping_timeout: int = 30  # Timeout en segundos
     scraping_max_retries: int = 3
+    scraping_browser_enabled: bool = True
+    scraping_browser_headless: bool = True
+    scraping_browser_timeout_ms: int = 45000
+    scraping_browser_max_pages: int = 3
+    scraping_browser_disable_resources: bool = True
+    scraping_browser_network_idle: bool = True
+    scraping_browser_solve_cloudflare: bool = False
+    scraping_browser_real_chrome: bool = False
 
     # Configuración del scheduler
     scheduler_scrape_interval_hours: int = 6

@@ -22,6 +22,7 @@
 - Install dependencies: `make install` (`uv sync`)
 - Start PostgreSQL: `make db-up` (`docker-compose up -d postgres`)
 - Apply migrations: `make migrate` (`uv run alembic upgrade head`)
+- Install bundled Chromium for scraping: `make browsers-install` (`uv run python -m playwright install chromium`)
 - Run API locally: `make run` (`uv run python -m bsentinel.infrastructure.api`)
 - Run tests: `make test` (`uv run pytest -q`)
 - Lint: `make lint` (`uv run ruff check .`)

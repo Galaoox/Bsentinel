@@ -65,6 +65,7 @@ def _reset_database() -> None:
 def client(monkeypatch):
     monkeypatch.setenv("PERSISTENCE_BACKEND", "sql")
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{TEST_DB_PATH}")
+    monkeypatch.setenv("SCRAPING_BROWSER_ENABLED", "false")
 
     bsentinel_pkg = importlib.import_module("bsentinel")
     settings_module = importlib.import_module("bsentinel._settings")
@@ -78,6 +79,15 @@ def client(monkeypatch):
 
     root_app_module.scraper_client = FakeConfiguredScraper()
     root_app_module.metadata_client = FakeMetadataProvider()
+
+    async def fake_start() -> None:
+        return None
+
+    async def fake_close() -> None:
+        return None
+
+    root_app_module.browser_session.start = fake_start
+    root_app_module.browser_session.close = fake_close
 
     _reset_database()
     with TestClient(root_app_module.root_app) as test_client:
