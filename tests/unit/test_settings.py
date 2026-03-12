@@ -8,6 +8,8 @@ def test_settings_defaults():
     assert cfg.app_environment in {"local", "production"}
     assert cfg.port == 8000
     assert cfg.database_url.startswith("postgresql")
+    assert cfg.auth_admin_username == "admin"
+    assert cfg.jwt_algorithm == "HS256"
 
 
 def test_settings_env_override_port(monkeypatch):

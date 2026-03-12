@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .mappers import apply_book_details, to_book
-from .models import BookModel
+from .models import BookAuthorModel, BookCategoryModel, BookModel
 
 
 class SQLBookRepository:
@@ -32,9 +32,28 @@ class SQLBookRepository:
             existing.pages = book.pages
             existing.description = book.description
             existing.image_url = book.image_url
-            existing.source_url = book.source_url
             existing.is_deleted = book.is_deleted
             existing.deleted_at = book.deleted_at
+
+            current_authors = [author.author for author in sorted(existing.authors, key=lambda item: item.position)]
+            if current_authors != book.authors:
+                existing.authors.clear()
+                await self.session.flush()
+                existing.authors = [
+                    BookAuthorModel(book_id=existing.id, position=index, author=author)
+                    for index, author in enumerate(book.authors)
+                ]
+
+            current_categories = [
+                category.category for category in sorted(existing.categories, key=lambda item: item.position)
+            ]
+            if current_categories != book.categories:
+                existing.categories.clear()
+                await self.session.flush()
+                existing.categories = [
+                    BookCategoryModel(book_id=existing.id, position=index, category=category)
+                    for index, category in enumerate(book.categories)
+                ]
             return
 
         model = BookModel(id=str(book.id), created_at=book.created_at)
@@ -52,10 +71,10 @@ class SQLBookRepository:
             return None
         return to_book(model)
 
-    async def get_by_source_url(self, source_url: str) -> Book | None:
+    async def get_by_isbn(self, isbn: str) -> Book | None:
         stmt = (
             select(BookModel)
-            .where(BookModel.source_url == source_url)
+            .where(BookModel.isbn == isbn)
             .options(selectinload(BookModel.authors), selectinload(BookModel.categories))
         )
         model = await self.session.scalar(stmt)

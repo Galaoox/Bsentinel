@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from bsentinel.domain.models import ArchiveJob, Book, BookStoreRelation, PriceHistoryRecord, Store
+from bsentinel.infrastructure.scraping.rules import build_default_buscalibre_rules
 
 
 class InMemoryStore:
@@ -17,8 +18,9 @@ class InMemoryStore:
         self.relations: dict[UUID, BookStoreRelation] = {}
         self.history: dict[UUID, PriceHistoryRecord] = {}
         self.archive_jobs: dict[UUID, ArchiveJob] = {}
+        self.revoked_refresh_tokens: dict[str, dict] = {}
         self._seed_store()
 
     def _seed_store(self) -> None:
-        store = Store()
+        store = Store(extraction_rules=build_default_buscalibre_rules())
         self.stores[store.id] = store

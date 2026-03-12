@@ -1,3 +1,7 @@
-from .buscalibre import BuscalibreScraper
+from .browser import StealthBrowserSession
+from .configured import ConfiguredStoreScraper
 
-__all__ = ["BuscalibreScraper"]
+__all__ = [
+    "ConfiguredStoreScraper",
+    "StealthBrowserSession",
+]

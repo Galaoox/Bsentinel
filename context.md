@@ -307,3 +307,328 @@ Append a new section at the end using this template:
   - Add optional PostgreSQL smoke tests in CI/dev profile.
   - Migrate uv dev dependency configuration to remove deprecation warning.
   - Continue updating `Readme.md` and `context.md` after each implementation session.
+
+## Session 2026-03-05 23:40 (UTC)
+- Objective: Implement JWT authentication for API v1 with refresh rotation and persistent refresh-token revocation.
+- Scope: Auth application service, JWT adapter, API v1 auth routes, Bearer protection for `/api/v1/*`, SQLAlchemy + in-memory refresh revocation repositories, Alembic migration, and test/doc updates.
+- Technical decisions:
+  - Kept the MVP auth model intentionally simple: one admin user sourced from environment variables.
+  - Used `OAuth2PasswordBearer` with `/api/v1/auth/login` so Swagger/OpenAPI exposes Bearer auth correctly.
+  - Implemented `access_token` + `refresh_token` flow with refresh rotation.
+  - Implemented `logout` as persistent refresh-token revocation; current access token remains valid until expiration.
+  - Protected all functional `v1` routers and left `/health`, root docs endpoints, and `/api/v1/auth/*` public.
+- Sources consulted (Context7 / official docs):
+  - Context7 FastAPI security docs for `OAuth2PasswordBearer`, token dependency flow, and OpenAPI integration.
+- Files changed:
+  - `bsentinel/_settings.py`
+  - `bsentinel/exceptions.py`
+  - `bsentinel/application/ports/__init__.py`
+  - `bsentinel/application/ports/auth.py` (new)
+  - `bsentinel/application/services/__init__.py`
+  - `bsentinel/application/services/auth.py` (new)
+  - `bsentinel/infrastructure/security/__init__.py` (new)
+  - `bsentinel/infrastructure/security/jwt.py` (new)
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/auth.py` (new)
+  - `bsentinel/infrastructure/api/v1/router.py`
+  - `bsentinel/infrastructure/api/v1/schemas.py`
+  - `bsentinel/infrastructure/persistence/in_memory/store.py`
+  - `bsentinel/infrastructure/persistence/in_memory/auth.py` (new)
+  - `bsentinel/infrastructure/persistence/in_memory/__init__.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/auth.py` (new)
+  - `bsentinel/infrastructure/persistence/sqlalchemy/models.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/__init__.py`
+  - `alembic/versions/0002_add_revoked_refresh_tokens.py` (new)
+  - `tests/integration/api/test_openapi_schema.py`
+  - `tests/integration/api/test_mvp_api.py`
+  - `tests/unit/application/test_auth_service.py` (new)
+  - `tests/unit/test_settings.py`
+  - `Readme.md`
+  - `PROGRESS.md`
+  - `pyproject.toml`
+  - `uv.lock`
+- Verification commands:
+  - `uv run ruff check .`
+  - `uv run pytest -q`
+- Results:
+  - Lint passed.
+  - Test suite passed: `26 passed`.
+- Risks / technical debt:
+  - Current auth model is still single-admin-by-env; no real user persistence or RBAC yet.
+  - `tool.uv.dev-dependencies` remains deprecated and should be migrated later.
+- Next steps:
+  - Update `Readme.md` when auth behavior evolves again.
+  - Continue appending `context.md` after each implementation session.
+  - Add PostgreSQL smoke tests in a dedicated next iteration.
+
+## Session 2026-03-05 23:40 (UTC)
+- Objective: Finalize MVP authentication, persistent refresh-token revocation, and developer command ergonomics.
+- Scope: JWT auth for API v1, SQL/in-memory refresh token revocation adapters, Alembic migration, auth API routes, protected route wiring, test coverage updates, local startup docs alignment, and root Makefile shortcuts.
+- Technical decisions:
+  - Kept the MVP auth model as a single admin identity configured by environment variables.
+  - Protected `/api/v1/system`, `/api/v1/catalog`, `/api/v1/pricing`, and `/api/v1/retention`, leaving `/api/v1/auth/*` public.
+  - Implemented refresh-token rotation with persistent revocation support to survive process restarts when SQL persistence is enabled.
+  - Introduced a root `Makefile` as the preferred shortcut layer for install, DB, migration, run, lint, test, and combined validation flows.
+  - Standardized local setup docs around `secrets/.env`, Docker PostgreSQL, Alembic migrations, and JWT login usage.
+- Sources consulted (Context7 / official docs):
+  - Context7 FastAPI docs for OAuth2 password flow and OpenAPI Bearer integration.
+  - Internal repository conventions and current route wiring.
+- Files changed:
+  - `bsentinel/application/ports/auth.py`
+  - `bsentinel/application/services/auth.py`
+  - `bsentinel/infrastructure/security/jwt.py`
+  - `bsentinel/infrastructure/api/v1/auth.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/router.py`
+  - `bsentinel/infrastructure/persistence/in_memory/auth.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/auth.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/models.py`
+  - `alembic/versions/0002_add_revoked_refresh_tokens.py`
+  - `tests/unit/application/test_auth_service.py`
+  - `tests/integration/api/test_mvp_api.py`
+  - `tests/integration/api/test_openapi_schema.py`
+  - `Makefile`
+  - `AGENTS.md`
+  - `Readme.md`
+  - `QUICKSTART.md`
+  - `PROGRESS.md`
+  - `context.md`
+- Verification commands:
+  - `uv run ruff check .`
+  - `uv run pytest -q`
+  - `make help`
+  - `make lint`
+  - `make test`
+- Results:
+  - Auth endpoints implemented: login, refresh, and logout.
+  - OpenAPI/Swagger now exposes Bearer auth for protected v1 routes.
+  - Refresh-token revocation is persisted via SQLAlchemy and covered by migration.
+  - Developer workflow is simplified through `make install`, `make db-up`, `make migrate`, `make run`, and `make check`.
+  - Validation passed: Ruff clean and test suite green (`26 passed`).
+- Risks / technical debt:
+  - Auth still relies on a single env-configured admin user; no user persistence or RBAC yet.
+  - `tool.uv.dev-dependencies` remains deprecated in `pyproject.toml`.
+  - `logout` only revokes refresh tokens; active access tokens remain valid until expiration.
+- Next steps:
+  - Migrate UV dev dependencies to `dependency-groups.dev`.
+  - Introduce persisted users/roles if the MVP moves beyond single-admin auth.
+  - Keep `Readme.md` and `context.md` updated after each implementation session.
+
+## Session 2026-03-06 05:40 (UTC)
+- Objective: Fix catalog modeling and Buscalibre extraction so books are not built from URL slugs or coupled to a single hardcoded store path.
+- Scope: Catalog creation flow, Buscalibre scraper, book persistence model, SQLAlchemy save path, tests, and migration alignment.
+- Technical decisions:
+  - Removed `source_url` from `Book`; product URLs now belong only to `BookStoreRelation`.
+  - Catalog creation now resolves the store by request URL domain through the store repository.
+  - Book identity is now based on ISBN; books without a valid extracted ISBN are rejected.
+  - Duplicate detection now targets the `book + store` relation instead of the old `book source_url` shape.
+  - Buscalibre metadata extraction now reads real HTML/JSON-LD instead of deriving title/authors from the URL slug.
+  - SQLAlchemy update flow was adjusted to safely replace child author/category collections without unique constraint collisions.
+- Sources consulted (Context7 / official docs):
+  - Context7 `/scrapy/scrapy` for `Selector(...).css(...).get()/getall()` usage on raw HTML parsing.
+  - Buscalibre live HTML inspection through HTTP fetches to validate JSON-LD `Product` availability.
+- Files changed:
+  - `bsentinel/application/ports/external.py`
+  - `bsentinel/application/ports/repositories.py`
+  - `bsentinel/application/services/catalog.py`
+  - `bsentinel/domain/models.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/catalog.py`
+  - `bsentinel/infrastructure/persistence/in_memory/books.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/books.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/mappers.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/models.py`
+  - `bsentinel/infrastructure/scraping/buscalibre.py`
+  - `alembic/versions/0003_remove_book_source_url.py`
+  - `tests/conftest.py`
+  - `tests/integration/api/test_mvp_api.py`
+  - `tests/unit/application/test_catalog_services.py`
+  - `Readme.md`
+- Verification commands:
+  - `make lint`
+  - `make test`
+- Results:
+  - Lint passed.
+  - Test suite passed: `29 passed`.
+  - Catalog behavior now matches the intended aggregate shape: one book, many store relations, relation-scoped product URLs.
+- Risks / technical debt:
+  - Store-specific selector/rule configuration still lives in code for Buscalibre; it is not yet persisted as store-managed JSON configuration.
+  - Playwright MCP requires a restarted Codex session to fully pick up the switch to `chromium`.
+- Next steps:
+  - Implement store configuration persistence for extraction rules/selectors.
+  - Extend the scraper abstraction to support multiple stores through stored extraction rules.
+
+## Session 2026-03-06 08:10 (UTC)
+- Objective: Implement persisted store extraction rules, decouple scraping from Buscalibre-specific runtime logic, and expose an admin store API in v1.
+- Scope: Store domain/persistence changes, Alembic migration for `stores.extraction_rules`, rule-driven scraper implementation, catalog/scraping service refactor, admin routes for stores, test coverage expansion, and documentation alignment.
+- Technical decisions:
+  - Added `Store.extraction_rules` as persisted configuration and kept store country codes on ISO alpha-2.
+  - Chose a fixed structured rule schema for `title`, `authors`, `isbn`, `price`, and optional `availability` instead of arbitrary JSON.
+  - Implemented ordered fallback sources with `css` and `json_ld` kinds plus optional `regex` and `normalizer`.
+  - Moved scraper execution to a store-aware contract so application services resolve the store and the scraper only executes the provided rules.
+  - Added admin-only store CRUD-lite endpoints (`create/list/get/update/patch`) and deferred delete/restore/test/stats to a later phase.
+  - Added `SCRAPING_ERROR` mapping to the API error contract for extraction/fetch failures.
+- Sources consulted (Context7 / official docs):
+  - Context7 SQLAlchemy docs for `JSON` with PostgreSQL `JSONB` variant behavior and ORM change-detection guidance.
+  - Existing repository architecture and route conventions from the local codebase.
+- Files changed:
+  - `bsentinel/domain/models.py`
+  - `bsentinel/application/ports/external.py`
+  - `bsentinel/application/ports/repositories.py`
+  - `bsentinel/application/services/catalog.py`
+  - `bsentinel/application/services/pricing.py`
+  - `bsentinel/application/services/stores.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/api/v1/auth.py`
+  - `bsentinel/infrastructure/api/v1/router.py`
+  - `bsentinel/infrastructure/api/v1/schemas.py`
+  - `bsentinel/infrastructure/api/v1/stores.py`
+  - `bsentinel/infrastructure/persistence/in_memory/store.py`
+  - `bsentinel/infrastructure/persistence/in_memory/stores.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/models.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/mappers.py`
+  - `bsentinel/infrastructure/persistence/sqlalchemy/stores.py`
+  - `bsentinel/infrastructure/scraping/configured.py`
+  - `bsentinel/infrastructure/scraping/rules.py`
+  - `alembic/versions/0004_add_store_extraction_rules.py`
+  - `tests/conftest.py`
+  - `tests/integration/api/test_mvp_api.py`
+  - `tests/integration/api/test_openapi_schema.py`
+  - `tests/unit/application/test_catalog_services.py`
+  - `tests/unit/application/test_store_services.py`
+  - `tests/unit/infrastructure/test_configured_scraper.py`
+  - `Readme.md`
+  - `PROGRESS.md`
+  - `context.md`
+- Verification commands:
+  - `make lint`
+  - `make test`
+- Results:
+  - Lint passed.
+  - Test suite passed: `36 passed`.
+  - API v1 now exposes admin store management and uses persisted extraction rules in the runtime path.
+- Risks / technical debt:
+  - Only the Buscalibre CO seed is validated by default; more stores still need real extraction configs.
+  - Store delete/restore/test/stats endpoints are still deferred.
+  - `tool.uv.dev-dependencies` remains deprecated in `pyproject.toml`.
+- Next steps:
+  - Decide whether store delete/restore/test/stats belong in the next MVP increment.
+  - Add more real store configurations and regression cases around HTML structure drift.
+  - Keep `Readme.md` and `context.md` updated after the next implementation session.
+
+## Session 2026-03-11 23:40 (America/Bogota)
+- Objective: Replace the `httpx` scraping runtime with Scrapling `AsyncStealthySession` as the primary fetch path and wire a shared browser session into the API lifecycle.
+- Scope: Scraper runtime refactor, FastAPI startup/shutdown wiring, browser session adapter, scraper settings, dependency updates, unit tests, and local setup docs.
+- Technical decisions:
+  - Chose Scrapling with `fetchers` extras as the primary runtime for store scraping.
+  - Reused one shared `AsyncStealthySession` through a `StealthBrowserSession` adapter instead of creating browser instances per request.
+  - Kept the existing extraction-rules engine and diagnostics model; only the fetch/runtime layer changed.
+  - Used bundled Chromium as the default runtime (`make browsers-install`) and left `real_chrome` configurable by env.
+  - Preserved `httpx` only for non-scraping integrations such as OpenLibrary.
+- Sources consulted (Context7 / official docs):
+  - Context7 Scrapling docs for `AsyncStealthySession`, response metadata, and installation requirements.
+  - Local repository bootstrap and service wiring in `root_app.py`.
+- Files changed:
+  - `pyproject.toml`
+  - `uv.lock`
+  - `bsentinel/_settings.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/scraping/__init__.py`
+  - `bsentinel/infrastructure/scraping/browser.py`
+  - `bsentinel/infrastructure/scraping/configured.py`
+  - `tests/unit/infrastructure/test_browser_session.py`
+  - `tests/unit/infrastructure/test_configured_scraper.py`
+  - `Readme.md`
+  - `QUICKSTART.md`
+  - `context.md`
+- Verification commands:
+  - `make lint`
+  - `make test`
+  - `uv run python - <<'PY' ...` smoke test with `StealthBrowserSession` against Buscalibre
+- Results:
+  - Lint passed.
+  - Test suite passed: `44 passed`.
+  - Store scraping now depends on a shared Scrapling browser runtime instead of per-request `httpx` fetching.
+  - Real scrape smoke test passed against `https://www.buscalibre.com.co/libro-al-sur-de-la-frontera-al-oeste-del-sol/9786287577107/p/55688855` and extracted title, authors, and ISBN successfully.
+- Risks / technical debt:
+  - Local/dev startup now depends on Chromium being installed before `make run`.
+  - `tool.uv.dev-dependencies` remains deprecated in `pyproject.toml`.
+- Next steps:
+  - Tune store extraction rules only after validating the new browser runtime output.
+  - Keep `Readme.md` and `context.md` updated after the next implementation session.
+
+## Session 2026-03-11 23:20 (UTC)
+- Objective: Replace the store scraper HTTP runtime with Scrapling using a shared stealth browser session, while keeping the rule-based extraction contract intact.
+- Scope: Scrapling dependency integration, shared browser session lifecycle, rule-driven scraper refactor to use Scrapling responses, startup/test wiring, developer command updates, and documentation alignment.
+- Technical decisions:
+  - Replaced `httpx` in `ConfiguredStoreScraper` with Scrapling as the primary fetch runtime and kept `httpx` only for non-store integrations such as OpenLibrary.
+  - Introduced `StealthBrowserSession` to encapsulate a shared `AsyncStealthySession` instead of coupling browser lifecycle directly to the scraper implementation.
+  - Kept extraction rules, JSON-LD parsing, and diagnostics unchanged at the contract level; only the fetch/runtime layer changed.
+  - Added browser runtime settings with bundled Chromium defaults and disabled browser startup in tests through `SCRAPING_BROWSER_ENABLED=false`.
+  - Added `make browsers-install` as the standard developer entrypoint to install the required Chromium runtime.
+- Sources consulted (Context7 / official docs):
+  - Context7 Scrapling docs for `StealthyFetcher`, `AsyncStealthySession`, response object metadata, and browser session reuse guidance.
+- Files changed:
+  - `pyproject.toml`
+  - `uv.lock`
+  - `Makefile`
+  - `bsentinel/_settings.py`
+  - `bsentinel/infrastructure/api/root_app.py`
+  - `bsentinel/infrastructure/scraping/__init__.py`
+  - `bsentinel/infrastructure/scraping/browser.py`
+  - `bsentinel/infrastructure/scraping/configured.py`
+  - `tests/conftest.py`
+  - `tests/unit/infrastructure/test_configured_scraper.py`
+  - `Readme.md`
+  - `QUICKSTART.md`
+  - `AGENTS.md`
+  - `context.md`
+- Verification commands:
+  - `make lint`
+  - `make test`
+- Results:
+  - Lint passed.
+  - Test suite passed: `44 passed`.
+  - The app now uses Scrapling/Chromium as the primary store scraping runtime and keeps tests isolated from browser startup.
+- Risks / technical debt:
+  - Real browser startup is now an explicit runtime dependency; environments must install Chromium before `make run`.
+  - Browser session health is not yet surfaced in `/health`.
+  - The `tool.uv.dev-dependencies` deprecation in `pyproject.toml` remains pending.
+- Next steps:
+  - Validate the failing Buscalibre URLs against the live Scrapling runtime after installing Chromium.
+  - Decide whether `/health` should expose browser readiness explicitly.
+  - Keep `Readme.md` and `context.md` updated after the next implementation session.
+
+## Session 2026-03-12 00:20 (UTC)
+- Objective: Fix Buscalibre price normalization so decimal-style zero-cent values such as `41850.00` are not persisted as `4185000`, and migrate existing persisted store rules safely.
+- Scope: Explicit price normalizer runtime cleanup, Buscalibre default rule update, store normalizer validation alignment, forward-only Alembic data migration, migration regression coverage, and price parsing tests.
+- Technical decisions:
+  - Kept `price_latam` as a backward-compatible runtime and validation alias while moving current/default Buscalibre rules to `price_cop_mixed`.
+  - Added a forward-only Alembic migration to update persisted Buscalibre `stores.extraction_rules` instead of rewriting `0004`.
+  - Made the migration row-by-row and JSON-object based to stay portable across SQLite and PostgreSQL.
+  - Reduced the runtime price path so already-normalized numeric values are not reparsed unnecessarily in `scrape_book()`.
+- Files changed:
+  - `bsentinel/infrastructure/scraping/configured.py`
+  - `bsentinel/infrastructure/scraping/rules.py`
+  - `bsentinel/application/services/stores.py`
+  - `bsentinel/infrastructure/api/v1/schemas.py`
+  - `alembic/versions/0005_update_buscalibre_price_normalizer.py`
+  - `tests/unit/infrastructure/test_configured_scraper.py`
+  - `tests/unit/application/test_store_services.py`
+  - `tests/integration/persistence/test_store_extraction_rules_migration.py`
+  - `Readme.md`
+  - `context.md`
+- Verification commands:
+  - `make lint`
+  - `make test`
+- Results:
+  - Lint passed.
+  - Test suite passed: `50 passed`.
+  - Existing databases upgraded from `0004` now rewrite Buscalibre price normalizers from `price_latam` to `price_cop_mixed`.
+  - The parser now keeps `41850.00` as `41850.0` instead of multiplying it by 100.
+- Risks / technical debt:
+  - `price_latam` still exists as a legacy alias to preserve compatibility with stale persisted configurations.
+  - `tool.uv.dev-dependencies` remains deprecated in `pyproject.toml`.
+- Next steps:
+  - Re-run the real Buscalibre price flow on affected titles and check if any page still needs a store-specific rule adjustment.
+  - Keep `Readme.md` and `context.md` updated after the next implementation session.

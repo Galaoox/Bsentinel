@@ -5,10 +5,23 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+
+JSON_VARIANT = JSON().with_variant(JSONB, "postgresql")
 
 
 def uuid_str() -> str:
@@ -24,6 +37,7 @@ class StoreModel(Base):
     country_code: Mapped[str] = mapped_column(String(3), nullable=False)
     scrape_interval_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    extraction_rules: Mapped[dict] = mapped_column(JSON_VARIANT, nullable=False, default=dict)
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -41,7 +55,6 @@ class BookModel(Base):
     pages: Mapped[int | None] = mapped_column(Integer, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -119,3 +132,12 @@ class ArchiveJobModel(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     moved_records: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     errors: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+
+class RevokedRefreshTokenModel(Base):
+    __tablename__ = "revoked_refresh_tokens"
+
+    jti: Mapped[str] = mapped_column(String(36), primary_key=True)
+    username: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

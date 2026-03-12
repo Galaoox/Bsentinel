@@ -18,12 +18,18 @@
 - Do not couple `domain/` directly to FastAPI, DB, or external APIs.
 
 ## Build, Test, and Development Commands
-- Install dependencies: `uv sync`
-- Run API locally: `uv run python -m bsentinel.infrastructure.api`
-- Run tests: `uv run pytest -q`
-- Lint: `uv run ruff check .`
-- Docker stack: `docker-compose up --build`
+- Preferred command surface: use `make help` to discover shortcuts.
+- Install dependencies: `make install` (`uv sync`)
+- Start PostgreSQL: `make db-up` (`docker-compose up -d postgres`)
+- Apply migrations: `make migrate` (`uv run alembic upgrade head`)
+- Install bundled Chromium for scraping: `make browsers-install` (`uv run python -m playwright install chromium`)
+- Run API locally: `make run` (`uv run python -m bsentinel.infrastructure.api`)
+- Run tests: `make test` (`uv run pytest -q`)
+- Lint: `make lint` (`uv run ruff check .`)
+- Combined validation: `make check`
+- Stop local Docker services: `make db-down` (`docker-compose down`)
 - Fallback (venv): `.venv/bin/python -m pytest -q`
+- Prefer `make <target>` when a matching target exists to keep commands consistent across sessions.
 
 ## Technical Research Policy (Context7 First)
 - For framework/library usage, API contracts, and up-to-date patterns, use **MCP Context7 first**.

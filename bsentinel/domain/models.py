@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 ACTIVE = "activo"
@@ -22,6 +23,7 @@ class Store:
     country_code: str = "CO"
     scrape_interval_hours: int = 6
     is_active: bool = True
+    extraction_rules: dict[str, Any] = field(default_factory=dict)
     is_deleted: bool = False
     created_at: datetime = field(default_factory=now_utc)
     deleted_at: datetime | None = None
@@ -40,7 +42,6 @@ class Book:
     pages: int | None = None
     description: str | None = None
     image_url: str | None = None
-    source_url: str = ""
     is_deleted: bool = False
     created_at: datetime = field(default_factory=now_utc)
     deleted_at: datetime | None = None
