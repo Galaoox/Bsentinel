@@ -26,7 +26,7 @@ class ExtractionSourceRequest(BaseModel):
     attribute: str | None = None
     path: str | None = None
     regex: str | None = None
-    normalizer: Literal["text_trim", "isbn_digits", "price_latam", "availability_buscalibre"] | None = None
+    normalizer: Literal["text_trim", "isbn_digits", "price_latam", "price_cop", "price_decimal", "price_cop_mixed", "availability_buscalibre"] | None = None
 
     @model_validator(mode="after")
     def validate_shape(self) -> "ExtractionSourceRequest":

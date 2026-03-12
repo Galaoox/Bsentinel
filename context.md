@@ -598,3 +598,37 @@ Append a new section at the end using this template:
   - Validate the failing Buscalibre URLs against the live Scrapling runtime after installing Chromium.
   - Decide whether `/health` should expose browser readiness explicitly.
   - Keep `Readme.md` and `context.md` updated after the next implementation session.
+
+## Session 2026-03-12 00:20 (UTC)
+- Objective: Fix Buscalibre price normalization so decimal-style zero-cent values such as `41850.00` are not persisted as `4185000`, and migrate existing persisted store rules safely.
+- Scope: Explicit price normalizer runtime cleanup, Buscalibre default rule update, store normalizer validation alignment, forward-only Alembic data migration, migration regression coverage, and price parsing tests.
+- Technical decisions:
+  - Kept `price_latam` as a backward-compatible runtime and validation alias while moving current/default Buscalibre rules to `price_cop_mixed`.
+  - Added a forward-only Alembic migration to update persisted Buscalibre `stores.extraction_rules` instead of rewriting `0004`.
+  - Made the migration row-by-row and JSON-object based to stay portable across SQLite and PostgreSQL.
+  - Reduced the runtime price path so already-normalized numeric values are not reparsed unnecessarily in `scrape_book()`.
+- Files changed:
+  - `bsentinel/infrastructure/scraping/configured.py`
+  - `bsentinel/infrastructure/scraping/rules.py`
+  - `bsentinel/application/services/stores.py`
+  - `bsentinel/infrastructure/api/v1/schemas.py`
+  - `alembic/versions/0005_update_buscalibre_price_normalizer.py`
+  - `tests/unit/infrastructure/test_configured_scraper.py`
+  - `tests/unit/application/test_store_services.py`
+  - `tests/integration/persistence/test_store_extraction_rules_migration.py`
+  - `Readme.md`
+  - `context.md`
+- Verification commands:
+  - `make lint`
+  - `make test`
+- Results:
+  - Lint passed.
+  - Test suite passed: `50 passed`.
+  - Existing databases upgraded from `0004` now rewrite Buscalibre price normalizers from `price_latam` to `price_cop_mixed`.
+  - The parser now keeps `41850.00` as `41850.0` instead of multiplying it by 100.
+- Risks / technical debt:
+  - `price_latam` still exists as a legacy alias to preserve compatibility with stale persisted configurations.
+  - `tool.uv.dev-dependencies` remains deprecated in `pyproject.toml`.
+- Next steps:
+  - Re-run the real Buscalibre price flow on affected titles and check if any page still needs a store-specific rule adjustment.
+  - Keep `Readme.md` and `context.md` updated after the next implementation session.

@@ -14,7 +14,12 @@ from bsentinel.exceptions import ScrapingError
 
 OUT_OF_STOCK = "agotado"
 ISBN_PATTERN = re.compile(r"(97[89]\d{10}|\d{9}[\dXx])")
-PRICE_PATTERN = re.compile(r"(?:\$|COP\$?|COP)?\s*([\d.]+(?:,\d{2})?|\d+(?:\.\d{3})*(?:,\d{2})?)")
+PRICE_TOKEN_PATTERN = re.compile(r"(?:\$|COP\$?|COP)?\s*([\d.,]+)")
+COP_THOUSANDS_PATTERN = re.compile(r"^\d{1,3}(?:\.\d{3})+(?:,\d{2})?$")
+COMMA_THOUSANDS_PATTERN = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d{2})?$")
+DECIMAL_COMMA_PATTERN = re.compile(r"^\d+,\d{2}$")
+DECIMAL_DOT_PATTERN = re.compile(r"^\d+\.\d{2}$")
+INTEGER_PATTERN = re.compile(r"^\d+$")
 logger = logging.getLogger(__name__)
 
 
@@ -81,7 +86,10 @@ class ConfiguredStoreScraper:
 
         status = self._extract_text_field(store, "availability", page, product) or ACTIVE
         price_value = self._extract_text_field(store, "price", page, product)
-        price = self._parse_price(price_value)
+        if isinstance(price_value, (int, float)):
+            price = round(float(price_value), 2)
+        else:
+            price = self._parse_price(price_value)
 
         if price is None:
             if status == OUT_OF_STOCK:
@@ -287,14 +295,13 @@ class ConfiguredStoreScraper:
         )
 
     def _build_response_error(self, store: Store, product_url: str, page: Any, reason: str) -> ScrapingError:
-        body_bytes = self._read_body(page)
         diagnostics = {
             "store_domain": store.domain,
             "product_url": product_url,
             "final_url": str(getattr(page, "url", product_url)),
             "status_code": getattr(page, "status", None),
             "content_type": (getattr(page, "headers", {}) or {}).get("content-type"),
-            "body_length": len(body_bytes),
+            "body_length": len(self._read_body(page)),
         }
         logger.warning(
             "Scraping HTTP response unusable",
@@ -332,8 +339,8 @@ class ConfiguredStoreScraper:
         if not query or not attribute:
             return []
         if attribute == "text":
-            return [str(value) for value in selector.css(f"{query}::text").getall()]
-        return [str(value) for value in selector.css(f"{query}::attr({attribute})").getall()]
+            return selector.css(f"{query}::text").getall()
+        return selector.css(f"{query}::attr({attribute})").getall()
 
     def _extract_json_ld_values(self, product: dict[str, Any], path: str) -> list[Any]:
         if not path:
@@ -376,9 +383,12 @@ class ConfiguredStoreScraper:
         if normalizer == "isbn_digits":
             match = ISBN_PATTERN.search(str(value))
             return match.group(1).upper() if match else None
-        if normalizer == "price_latam":
-            parsed = self._parse_price(value)
-            return parsed
+        if normalizer == "price_decimal":
+            return self._parse_price_decimal(value)
+        if normalizer == "price_cop":
+            return self._parse_price_cop(value)
+        if normalizer in {"price_cop_mixed", "price_latam"}:
+            return self._parse_price_cop_mixed(value)
         if normalizer == "availability_buscalibre":
             text = str(value).strip().lower()
             if not text:
@@ -391,21 +401,70 @@ class ConfiguredStoreScraper:
         return str(value).strip() or None
 
     def _parse_price(self, raw_price: Any) -> float | None:
+        return self._parse_price_cop_mixed(raw_price)
+
+    def _extract_price_token(self, raw_price: Any) -> str | None:
+        text = str(raw_price).strip()
+        if not text:
+            return None
+        match = PRICE_TOKEN_PATTERN.search(text)
+        if not match:
+            return None
+        return match.group(1)
+
+    def _parse_price_decimal(self, raw_price: Any) -> float | None:
+        if raw_price is None:
+            return None
+        if isinstance(raw_price, (int, float)):
+            return round(float(raw_price), 2)
+        token = self._extract_price_token(raw_price)
+        if not token:
+            return None
+        normalized = token.replace(",", "")
+        if not re.fullmatch(r"\d+(?:\.\d{1,2})?", normalized):
+            return None
+        try:
+            return round(float(normalized), 2)
+        except ValueError:
+            return None
+
+    def _parse_price_cop(self, raw_price: Any) -> float | None:
+        value = self._parse_price_cop_mixed(raw_price)
+        if value is None:
+            return None
+        if value != round(value):
+            return None
+        return round(value, 2)
+
+    def _parse_price_cop_mixed(self, raw_price: Any) -> float | None:
         if raw_price is None:
             return None
         if isinstance(raw_price, (int, float)):
             return round(float(raw_price), 2)
 
-        text = str(raw_price).strip()
-        if not text:
+        token = self._extract_price_token(raw_price)
+        if not token:
             return None
 
-        match = PRICE_PATTERN.search(text)
-        if not match:
+        normalized: str | None = None
+        if COP_THOUSANDS_PATTERN.fullmatch(token):
+            normalized = token.replace(".", "").replace(",", ".")
+        elif COMMA_THOUSANDS_PATTERN.fullmatch(token):
+            normalized = token.replace(",", "")
+        elif DECIMAL_COMMA_PATTERN.fullmatch(token):
+            normalized = token.replace(",", ".")
+        elif DECIMAL_DOT_PATTERN.fullmatch(token):
+            normalized = token
+        elif INTEGER_PATTERN.fullmatch(token):
+            normalized = token
+        else:
             return None
 
-        cleaned = match.group(1).replace(".", "").replace(",", ".")
         try:
-            return round(float(cleaned), 2)
+            value = round(float(normalized), 2)
         except ValueError:
             return None
+
+        if value.is_integer():
+            return round(value, 2)
+        return value

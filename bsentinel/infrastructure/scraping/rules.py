@@ -31,14 +31,14 @@ _DEFAULT_BUSCALIBRE_RULES = {
     },
     "price": {
         "sources": [
-            {"kind": "json_ld", "path": "offers[].price", "normalizer": "price_latam"},
+            {"kind": "json_ld", "path": "offers[].price", "normalizer": "price_cop_mixed"},
             {
                 "kind": "css",
                 "selector": "meta[property='product:price:amount']",
                 "attribute": "content",
-                "normalizer": "price_latam",
+                "normalizer": "price_cop_mixed",
             },
-            {"kind": "css", "selector": ".precio-ahora", "attribute": "text", "normalizer": "price_latam"},
+            {"kind": "css", "selector": ".precio-ahora", "attribute": "text", "normalizer": "price_cop_mixed"},
         ]
     },
     "availability": {

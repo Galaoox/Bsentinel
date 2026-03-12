@@ -15,7 +15,15 @@ from bsentinel.exceptions import EntityAlreadyExistsError, EntityDoesNotExistErr
 
 ALPHA2_PATTERN = re.compile(r"^[A-Z]{2}$")
 SUPPORTED_SOURCE_KINDS = {"css", "json_ld"}
-SUPPORTED_NORMALIZERS = {"text_trim", "isbn_digits", "price_latam", "availability_buscalibre"}
+SUPPORTED_NORMALIZERS = {
+    "text_trim",
+    "isbn_digits",
+    "price_latam",
+    "price_cop",
+    "price_decimal",
+    "price_cop_mixed",
+    "availability_buscalibre",
+}
 REQUIRED_RULE_FIELDS = {"title", "authors", "isbn", "price"}
 OPTIONAL_RULE_FIELDS = {"availability"}
 

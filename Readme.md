@@ -53,6 +53,7 @@ Contrato actual:
 - `country_code` usa ISO alpha-2 (`CO`, `MX`, `AR`, ...).
 - `extraction_rules` define campos `title`, `authors`, `isbn`, `price` y opcional `availability`.
 - Cada campo usa `sources` ordenados con `kind` (`css` o `json_ld`), `regex` opcional y `normalizer` opcional.
+- Para precios, los normalizadores explícitos soportados son `price_cop`, `price_decimal` y `price_cop_mixed`; `price_latam` queda solo como alias legacy compatible.
 
 ## Endpoints MVP 🔌
 

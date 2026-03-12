@@ -57,3 +57,40 @@ async def test_create_and_list_store():
     assert created["domain"] == "www.demo.com"
     assert listed["meta"]["total"] == 2
     assert any(item["domain"] == "www.demo.com" for item in listed["items"])
+
+
+@pytest.mark.asyncio
+async def test_create_store_accepts_explicit_price_normalizers():
+    service = StoreCommandService(stores=InMemoryStoreRepository(InMemoryStore()))
+    rules = build_default_buscalibre_rules()
+    rules["price"]["sources"][0]["normalizer"] = "price_cop_mixed"
+    rules["price"]["sources"][1]["normalizer"] = "price_cop"
+    rules["price"]["sources"][2]["normalizer"] = "price_decimal"
+
+    created = await service.create_store(
+        name="Test Store",
+        domain="www.test.com",
+        country_code="CO",
+        scrape_interval_hours=6,
+        is_active=True,
+        extraction_rules=rules,
+    )
+
+    assert created["extraction_rules"]["price"]["sources"][0]["normalizer"] == "price_cop_mixed"
+
+
+@pytest.mark.asyncio
+async def test_create_store_rejects_unknown_price_normalizer():
+    service = StoreCommandService(stores=InMemoryStoreRepository(InMemoryStore()))
+    rules = build_default_buscalibre_rules()
+    rules["price"]["sources"][0]["normalizer"] = "price_unknown"
+
+    with pytest.raises(ValidationError):
+        await service.create_store(
+            name="Test Store",
+            domain="www.test.com",
+            country_code="CO",
+            scrape_interval_hours=6,
+            is_active=True,
+            extraction_rules=rules,
+        )

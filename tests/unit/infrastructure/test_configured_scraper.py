@@ -46,6 +46,23 @@ HTML_WITHOUT_AUTHORS = """
 """
 
 
+HTML_WITH_DOT_DECIMAL_PRICE = """
+<html>
+  <head>
+    <script type="application/ld+json">
+      {
+        "@type": "Product",
+        "name": "Kafka on the Shore",
+        "isbn": "9781400079278",
+        "author": [{"name": "Haruki Murakami"}],
+        "offers": {"price": "41850.00", "availability": "https://schema.org/InStock"}
+      }
+    </script>
+  </head>
+</html>
+"""
+
+
 class StubBrowserSession:
     def __init__(self, response: Response) -> None:
         self.response = response
@@ -96,6 +113,33 @@ async def test_configured_scraper_extracts_price_and_status():
 
     assert result.price == 45900.0
     assert result.status == "activo"
+
+
+@pytest.mark.asyncio
+async def test_configured_scraper_keeps_dot_decimal_price_without_multiplying_by_100():
+    scraper = ConfiguredStoreScraper(browser_session=StubBrowserSession(build_response(HTML_WITH_DOT_DECIMAL_PRICE)))
+    store = Store(extraction_rules=build_default_buscalibre_rules())
+
+    result = await scraper.scrape_book(store, "https://www.buscalibre.com.co/libro-kafka-on-the-shore")
+
+    assert result.price == 41850.0
+
+
+def test_price_normalizers_parse_expected_formats():
+    scraper = ConfiguredStoreScraper(browser_session=StubBrowserSession(build_response(HTML)))
+
+    assert scraper._normalize_value("price_cop_mixed", "41850.00") == 41850.0
+    assert scraper._normalize_value("price_cop_mixed", "41.850,00") == 41850.0
+    assert scraper._normalize_value("price_cop", "41.850") == 41850.0
+    assert scraper._normalize_value("price_decimal", "41850.50") == 41850.5
+    assert scraper._normalize_value("price_latam", "41850.00") == 41850.0
+
+
+def test_price_normalizers_return_none_for_invalid_values():
+    scraper = ConfiguredStoreScraper(browser_session=StubBrowserSession(build_response(HTML)))
+
+    assert scraper._normalize_value("price_decimal", "price unavailable") is None
+    assert scraper._normalize_value("price_cop", "41850.50") is None
 
 
 def test_validate_page_response_rejects_empty_body():
