@@ -1,120 +1,58 @@
 # language: es
-Feature: Proceso de Scraping de Precios
+Feature: Proceso de scraping configurado
   Como sistema de rastreo de precios
-  Quiero poder extraer y actualizar precios de libros automáticamente
-  Para mantener información actualizada de los precios
+  Quiero extraer detalle y precio usando reglas configuradas por tienda
+  Para sostener el flujo observable implementado hoy
 
   Background:
-    Given que el sistema de scraping está configurado exclusivamente para sitios con server-side rendering
-    And que hay libros registrados para rastrear
-    And que la configuración de tiendas está disponible
-    And que el sistema de rotación de proxies está activo
+    Given que el scraper usa reglas de extracción configuradas por tienda
+    And que la sesión de navegador debe estar inicializada para hacer fetch
 
-  Scenario: Un scraper actualiza el precio de un libro en una tienda específica
-    Given que un libro existe en el sistema y está disponible en Buscalibre
-    And que la configuración para Buscalibre especifica los selectores CSS correctos
-    And que el libro tiene la URL "https://www.buscalibre.com.co/libro-exemplo"
-    When la tarea de scraping para esa relación libro-tienda se ejecuta
-    Then el sistema debe hacer una petición a la URL específica del libro en Buscalibre
-    And debe usar un User-Agent aleatorio para la petición
-    And debe usar un Proxy aleatorio para la petición
-    And debe extraer el nuevo precio usando el selector configurado
-    And debe actualizar los campos "precio_actual", "estado" y "last_checked" en "libro_tienda"
-    And debe crear un nuevo registro en "historial_precios" vinculado a la relación libro-tienda
-    And el sistema debe registrar el éxito en los logs
+  Scenario: Extraer los datos base de un libro al registrarlo
+    Given que la tienda soportada tiene reglas para "title", "authors" e "isbn"
+    When el sistema procesa una URL de producto para crear el libro
+    Then hace fetch de la página del producto
+    And intenta extraer datos desde fuentes "css" y/o "json_ld"
+    And exige título, autores e ISBN utilizables para completar el alta
 
-  Scenario: El scraper detecta que un libro ya no está disponible en una tienda
-    Given que un libro existe en el sistema y está marcado como "activo" en Buscalibre
-    When la tarea de scraping se ejecuta
-    And la página indica que el libro no está disponible
-    Then el sistema debe marcar "estado" como "agotado" en "libro_tienda"
-    And debe registrar un precio de 0 en "historial_precios" con estado "agotado"
-    And debe actualizar "last_checked" en "libro_tienda"
+  Scenario: Ejecutar scraping inmediato después de crear una relación
+    Given que una nueva relación libro-tienda fue creada correctamente
+    When el servicio de catálogo completa el alta
+    Then ejecuta un scraping inmediato de esa relación
+    And actualiza "current_price", "status" y "last_checked"
+    And agrega un registro en el historial de precios
 
-  Scenario: El scraper falla porque la estructura de la página cambió
-    Given que un libro existe en el sistema en una tienda específica
-    When la tarea de scraping se ejecuta
-    And el selector CSS para el precio no encuentra ningún elemento en la página
-    Then el sistema NO debe actualizar el precio en "libro_tienda"
-    And debe marcar "estado" como "desconocido" en "libro_tienda"
-    And debe registrar un error de tipo "Selector no encontrado" en los logs
-    And la tarea no debe ser reintentada por este tipo de error
+  Scenario: Calcular precio y estado desde la respuesta utilizable
+    Given que la página devolvió HTML utilizable
+    When el scraper procesa las reglas de "price" y "availability"
+    Then el precio se normaliza según la regla configurada
+    And si no hay availability usable el estado por defecto es "activo"
+    And si el precio no puede determinarse y el estado es "agotado", el precio guardado es 0.0
+    And si el precio no puede determinarse y el estado no es "agotado", el estado final pasa a "desconocido" y el precio guardado es 0.0
 
-  Scenario: El scraper falla por error de red
-    Given que un libro existe en el sistema
-    And que hay problemas de conectividad de red
-    When la tarea de scraping se ejecuta
-    And la petición HTTP falla con un error de red
-    Then el sistema debe registrar el error en los logs
-    And la tarea debe ser reintentada hasta 2 veces más
-    And si todos los reintentos fallan, debe marcar la tarea como fallida
+  Scenario: Rechazar respuestas HTTP no utilizables
+    When el fetch devuelve una respuesta vacía, no HTML o con status mayor o igual a 400
+    Then el scraper falla con un error de scraping
+    And el motivo puede ser "empty_body", "unexpected_content_type", "http_error" o "accepted_without_html"
 
-  Scenario: El scraper encuentra un precio inválido
-    Given que un libro existe en el sistema
-    And que la página devuelve un precio con formato inválido
-    When la tarea de scraping se ejecuta
-    And el sistema extrae un precio que no es numérico
-    Then el sistema NO debe actualizar el precio en "libro_tienda"
-    And debe marcar "estado" como "desconocido" en "libro_tienda"
-    And debe registrar un error de tipo "Precio inválido" en los logs
-    And la tarea no debe ser reintentada por este tipo de error
+  Scenario: Registrar diagnóstico cuando falta un campo obligatorio
+    Given que no se puede extraer alguno de los campos obligatorios del detalle
+    When el sistema intenta registrar el libro
+    Then falla con un error de scraping
+    And el error conserva diagnósticos sobre "field_name", intentos de source y presencia de JSON-LD
 
-  Scenario: El scraper es bloqueado por el sitio web
-    Given que un libro existe en el sistema
-    And que el sitio web ha bloqueado nuestras peticiones
-    When la tarea de scraping se ejecuta
-    And la petición recibe un código de respuesta 403 o 429
-    Then el sistema debe cambiar automáticamente a un proxy diferente
-    And debe cambiar el User-Agent
-    And debe reintentar la petición con las nuevas credenciales
+  Scenario: Ejecutar scraping batch sobre libros activos
+    Given que existen relaciones libro-tienda registradas
+    When corre el batch de scraping del scheduler
+    Then se procesan únicamente relaciones cuyos libros no están eliminados lógicamente
+    And cada relación reutiliza el mismo flujo de scraping individual
 
-  Scenario: El scraper procesa múltiples libros en lote
-    Given que hay 10 libros registrados para rastrear
-    And que todos los libros son de tiendas soportadas
-    When el planificador ejecuta el proceso de scraping en lote
-    Then el sistema debe procesar todos los libros de forma asíncrona
-    And debe respetar los límites de velocidad configurados
-    And debe actualizar los precios de todos los libros exitosos
-    And debe registrar los errores de los libros fallidos
+  Rule: Contrato observable actual
+    - La implementación actual usa una sesión de navegador stealth compartida, no un cliente HTTP simple por tienda.
+    - Las reglas soportan sources "css" y "json_ld" con normalizers configurables.
+    - El proceso batch existe en la aplicación, pero no tiene endpoint público propio en la API v1.
 
-  Scenario: El scraper maneja timeouts correctamente
-    Given que un libro existe en el sistema
-    And que el sitio web responde muy lentamente
-    When la tarea de scraping se ejecuta
-    And la petición excede el timeout configurado
-    Then el sistema debe cancelar la petición
-    And debe registrar un error de tipo "Timeout" en los logs
-    And debe reintentar la petición con un timeout mayor
-
-  Scenario: El scraper valida la estructura de datos extraída
-    Given que un libro existe en el sistema
-    And que la página devuelve datos incompletos
-    When la tarea de scraping se ejecuta
-    And el sistema extrae información parcial del libro
-    Then el sistema debe validar que los datos requeridos estén presentes
-    And debe actualizar solo los campos que tengan datos válidos
-    And debe registrar una advertencia sobre datos incompletos
-
-  Scenario: Scraping de múltiples tiendas para el mismo libro
-    Given que un libro existe en Buscalibre y Librería Nacional
-    When el planificador ejecuta el scraping para este libro
-    Then debe procesar ambas tiendas de forma independiente
-    And debe actualizar "precio_actual" y "estado" en cada relación libro-tienda por separado
-    And debe crear registros separados en "historial_precios" para cada tienda
-
-  Scenario: El scraper respeta los límites de velocidad por tienda
-    Given que hay múltiples libros de la misma tienda en la cola
-    When el sistema procesa la cola de scraping
-    Then debe respetar el delay configurado entre peticiones a la misma tienda
-    And debe alternar entre diferentes tiendas para evitar sobrecarga
-    And debe registrar el tiempo de espera en los logs
-
-  Scenario: El scraper maneja cambios de estructura de página gradualmente
-    Given que un libro existe en el sistema
-    And que la tienda ha cambiado parcialmente su estructura
-    When la tarea de scraping se ejecuta
-    And algunos selectores funcionan pero otros no
-    Then el sistema debe actualizar los campos que se pueden extraer
-    And debe marcar como "desconocido" los campos que no se pueden extraer
-    And debe registrar una advertencia sobre selectores parcialmente rotos
-    And debe sugerir revisión manual de la configuración
+  Rule: Fuera de alcance actual
+    - No hay contrato implementado de rotación de proxies, user-agents aleatorios, cola distribuida ni backoff automático de scraping.
+    - No hay contrato implementado de reintentos selectivos por timeout, 403 o 429.
+    - No hay procesamiento asíncrono expuesto por API para lanzar scrapings manuales por lote o por tienda.
