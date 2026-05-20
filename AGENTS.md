@@ -68,19 +68,18 @@
   - docs updates when contracts/flows change.
 
 ## Session Context Logging
-- Maintain `context.md` as the implementation logbook.
-- After each implementation session, append:
+- Engram is the persistent session memory for implementation history, decisions, and operational continuity.
+- After each implementation session, persist:
   - objective and scope,
   - key decisions,
   - files changed,
   - verification commands/results,
   - risks/debt and next steps.
-- `context.md` is not a documentation fallback source; its purpose is historical session tracking.
-- At the end of each implemented plan/session, explicitly suggest updating both `Readme.md` and `context.md` when applicable.
+- Do not create or maintain repository logbook files for session history unless a future change explicitly reintroduces that pattern.
+- At the end of each implemented plan/session, suggest updating `Readme.md` only when behavior, setup, or API usage changed.
 
 ## End-of-Session Checklist
 - Verify implementation scope against the agreed plan.
 - Run relevant checks/tests and capture outcomes.
 - Suggest updating `Readme.md` when behavior, setup, or API usage changed.
-- Suggest updating `context.md` with a new session entry (objective, changes, validations, next steps).
 - Ensure commit messages follow Conventional Commits in English.

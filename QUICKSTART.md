@@ -182,4 +182,3 @@ Verify `JWT_SECRET_KEY`, `JWT_ALGORITHM`, and token expiration values in `secret
 - `Readme.md`
 - `PROGRESS.md`
 - `docs/README.md`
-- `context.md`

@@ -12,4 +12,4 @@
 - Estado real actual: `../PROGRESS.md`
 - Cómo ejecutar y validar MVP: `../QUICKSTART.md`
 - Endpoints y arquitectura resumida: `../Readme.md`
-- Historial de sesiones técnicas: `../context.md`
+- Continuidad de sesiones técnicas: Engram (memoria persistente operativa, fuera del repo)
