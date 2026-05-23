@@ -59,24 +59,17 @@ from bsentinel.infrastructure.persistence.sqlalchemy import (
     session_scope,
 )
 from bsentinel.infrastructure.scheduler import LocalScheduler
-from bsentinel.infrastructure.scraping import ConfiguredStoreScraper
-from bsentinel.infrastructure.scraping.browser import StealthBrowserSession
+from bsentinel.infrastructure.scraping import ConfiguredStoreScraper, build_scraping_runtime
+from bsentinel.infrastructure.scraping.sanitization import sanitize_proxy_observable
 from bsentinel.infrastructure.security import JWTTokenManager
 
 logger = logging.getLogger(__name__)
 
 in_memory_store = InMemoryStore()
 metadata_client = OpenLibraryClient()
-browser_session = StealthBrowserSession(
-    headless=settings.scraping_browser_headless,
-    timeout_ms=settings.scraping_browser_timeout_ms,
-    max_pages=settings.scraping_browser_max_pages,
-    disable_resources=settings.scraping_browser_disable_resources,
-    network_idle=settings.scraping_browser_network_idle,
-    solve_cloudflare=settings.scraping_browser_solve_cloudflare,
-    real_chrome=settings.scraping_browser_real_chrome,
-)
-scraper_client = ConfiguredStoreScraper(browser_session=browser_session)
+scraping_runtime = build_scraping_runtime(settings)
+browser_session = scraping_runtime
+scraper_client = ConfiguredStoreScraper(browser_session=scraping_runtime)
 token_manager = JWTTokenManager(
     secret_key=settings.jwt_secret_key,
     algorithm=settings.jwt_algorithm,
@@ -288,9 +281,8 @@ scheduler = LocalScheduler(run_scraping_batch)
 async def lifespan(app: FastAPI):
     """Gestiona el ciclo de vida de la aplicación."""
     configure_logging()
-    if settings.scraping_browser_enabled:
-        await browser_session.start()
-        app.state.browser_session = browser_session
+    await scraping_runtime.start()
+    app.state.scraping_runtime = scraping_runtime
     scheduler.start(interval_hours=settings.scheduler_scrape_interval_hours)
     app.state.scheduler = scheduler
     if settings.persistence_backend == "in_memory":
@@ -299,7 +291,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         scheduler.shutdown()
-        await browser_session.close()
+        await scraping_runtime.close()
 
 
 root_app = FastAPI(
@@ -367,6 +359,8 @@ async def add_request_id(request: Request, call_next):
 async def standard_exception_handler(request: Request, exc: StandardException):
     """Mapea excepciones de negocio a contrato de error API."""
     if isinstance(exc, ScrapingError):
+        safe_message = str(sanitize_proxy_observable(str(exc)))
+        safe_diagnostics = sanitize_proxy_observable(getattr(exc, "diagnostics", {}))
         logger.warning(
             "Scraping request failed",
             extra={
@@ -374,12 +368,12 @@ async def standard_exception_handler(request: Request, exc: StandardException):
                 "method": request.method,
                 "path": str(request.url.path),
                 "error_code": "SCRAPING_ERROR",
-                "error_message": str(exc),
+                "error_message": safe_message,
                 "scraping_reason": getattr(exc, "reason", None),
-                "scraping_diagnostics": getattr(exc, "diagnostics", {}),
+                "scraping_diagnostics": safe_diagnostics,
             },
         )
-        return _error_response(request, status_code=400, code="SCRAPING_ERROR", message=str(exc))
+        return _error_response(request, status_code=400, code="SCRAPING_ERROR", message=safe_message)
     if isinstance(exc, EntityDoesNotExistError):
         return _error_response(request, status_code=404, code="ENTITY_NOT_FOUND", message=str(exc))
     if isinstance(exc, EntityAlreadyExistsError):
@@ -459,7 +453,7 @@ async def health_check():
         "version": settings.app_version,
         "environment": settings.app_environment,
         "db": "in-memory" if settings.persistence_backend == "in_memory" else "sqlalchemy",
-        "scraping": "ready" if browser_session.is_started else "not_initialized",
+        "scraping": "ready" if scraping_runtime.is_started else "not_initialized",
         "openlibrary": "ready",
     }
 

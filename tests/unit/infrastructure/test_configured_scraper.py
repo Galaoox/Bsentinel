@@ -73,6 +73,16 @@ class StubBrowserSession:
         return self.response
 
 
+class FailingHttpSession:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+        self.calls: list[str] = []
+
+    async def fetch(self, url: str) -> Response:
+        self.calls.append(url)
+        raise self.error
+
+
 def build_response(
     body: str,
     *,
@@ -213,3 +223,22 @@ async def test_fetch_page_raises_when_browser_session_is_not_initialized():
 
     assert exc_info.value.reason == "fetch_failed"
     assert exc_info.value.diagnostics["error_type"] == "RuntimeError"
+
+
+@pytest.mark.asyncio
+async def test_http_failure_remains_http_failure_without_browser_fallback(monkeypatch: pytest.MonkeyPatch):
+    browser_start_calls = {"count": 0}
+
+    async def fake_browser_start(self) -> None:
+        browser_start_calls["count"] += 1
+
+    monkeypatch.setattr(StealthBrowserSession, "start", fake_browser_start)
+    scraper = ConfiguredStoreScraper(browser_session=FailingHttpSession(TimeoutError("proxy timeout")))
+    store = Store(domain="www.buscalibre.com.co", extraction_rules=build_default_buscalibre_rules())
+
+    with pytest.raises(ScrapingError) as exc_info:
+        await scraper.extract_book_details(store, "https://www.buscalibre.com.co/libro-iliada")
+
+    assert exc_info.value.reason == "fetch_failed"
+    assert exc_info.value.diagnostics["error_type"] == "TimeoutError"
+    assert browser_start_calls["count"] == 0

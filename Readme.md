@@ -142,6 +142,8 @@ uv run python -m bsentinel.infrastructure.api
 
 Variables nuevas del runtime de scraping:
 
+- `SCRAPING_RUNTIME` (`http` por defecto, `browser` para forzar Chromium)
+- `SCRAPING_HTTP_PROXY` (proxy HTTP/HTTPS único opcional; si incluye credenciales, la aplicación las redacta en logs/errores observables)
 - `SCRAPING_BROWSER_HEADLESS`
 - `SCRAPING_BROWSER_TIMEOUT_MS`
 - `SCRAPING_BROWSER_MAX_PAGES`
@@ -186,7 +188,7 @@ Fallback en entorno local con venv:
 ## Limitaciones actuales ⚠️
 
 - Solo existe un usuario admin definido por variables de entorno.
-- El runtime de scraping requiere Chromium instalado (`make browsers-install`).
+- El runtime `browser` requiere Chromium instalado (`make browsers-install`); el runtime `http` sigue siendo el default operativo.
 - `logout` revoca refresh tokens; el access token actual sigue válido hasta expirar.
 - Integración OpenLibrary simplificada (best-effort).
 - Solo se persisten libros cuando la extracción produce un ISBN válido.

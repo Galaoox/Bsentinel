@@ -1,5 +1,7 @@
 from uuid import UUID
 
+import pytest
+
 from bsentinel.infrastructure.scraping.rules import build_default_buscalibre_rules
 
 
@@ -147,6 +149,80 @@ def test_store_endpoints_require_admin_authentication(client):
     response = client.get("/api/v1/stores")
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "AUTH_INVALID_TOKEN"
+
+
+def test_store_delete_and_restore_lifecycle(client):
+    headers = login_headers(client)
+    create_store = client.post(
+        "/api/v1/stores",
+        json={
+            "name": "Delete Restore Store",
+            "domain": "www.delete-restore-store.com",
+            "country_code": "CO",
+            "scrape_interval_hours": 12,
+            "is_active": True,
+            "extraction_rules": build_default_buscalibre_rules(),
+        },
+        headers=headers,
+    )
+    assert create_store.status_code == 201
+    store_id = create_store.json()["id"]
+
+    delete_response = client.delete(f"/api/v1/stores/{store_id}", headers=headers)
+    assert delete_response.status_code == 204
+
+    repeated_delete = client.delete(f"/api/v1/stores/{store_id}", headers=headers)
+    assert repeated_delete.status_code == 204
+
+    listed_after_delete = client.get("/api/v1/stores", headers=headers)
+    assert listed_after_delete.status_code == 200
+    assert all(item["id"] != store_id for item in listed_after_delete.json()["items"])
+
+    restore_response = client.post(f"/api/v1/stores/{store_id}/restore", headers=headers)
+    assert restore_response.status_code == 200
+    restored = restore_response.json()
+    assert restored["id"] == store_id
+    assert restored["domain"] == "www.delete-restore-store.com"
+    assert restored["is_active"] is True
+
+    repeated_restore = client.post(f"/api/v1/stores/{store_id}/restore", headers=headers)
+    assert repeated_restore.status_code == 200
+    assert repeated_restore.json()["id"] == store_id
+
+    listed_after_restore = client.get("/api/v1/stores", headers=headers)
+    assert listed_after_restore.status_code == 200
+    assert any(item["id"] == store_id for item in listed_after_restore.json()["items"])
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("delete", "/api/v1/stores/{store_id}"),
+        ("post", "/api/v1/stores/{store_id}/restore"),
+    ],
+)
+def test_store_delete_and_restore_missing_store_returns_404(client, method, path):
+    response = getattr(client, method)(
+        path.format(store_id="11111111-1111-1111-1111-111111111111"),
+        headers=login_headers(client),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "ENTITY_NOT_FOUND"
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("delete", "/api/v1/stores/not-a-uuid"),
+        ("post", "/api/v1/stores/not-a-uuid/restore"),
+    ],
+)
+def test_store_delete_and_restore_invalid_store_id_returns_422(client, method, path):
+    response = getattr(client, method)(path, headers=login_headers(client))
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "REQUEST_VALIDATION_ERROR"
 
 
 def test_delete_and_restore_book(client):

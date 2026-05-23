@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     scraping_delay: float = 2.0  # Segundos entre peticiones a la misma tienda
     scraping_timeout: int = 30  # Timeout en segundos
     scraping_max_retries: int = 3
+    scraping_runtime: str = "http"  # http | browser
+    scraping_http_timeout: int = 30
+    scraping_http_retries: int = 2
+    scraping_http_impersonate: str | None = None
+    scraping_http_http3: bool = False
+    scraping_http_stealthy_headers: bool = True
+    scraping_http_proxy: str | None = None
     scraping_browser_enabled: bool = True
     scraping_browser_headless: bool = True
     scraping_browser_timeout_ms: int = 45000

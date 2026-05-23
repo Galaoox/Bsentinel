@@ -29,6 +29,14 @@ def build_store_router(get_command_service, get_query_service):
     async def get_store(store_id: UUID, query_service: StoreQueryService = Depends(get_query_service)):
         return await query_service.get_store(store_id)
 
+    @router.delete("/{store_id}", status_code=status.HTTP_204_NO_CONTENT)
+    async def delete_store(store_id: UUID, command_service: StoreCommandService = Depends(get_command_service)):
+        await command_service.delete_store(store_id)
+
+    @router.post("/{store_id}/restore")
+    async def restore_store(store_id: UUID, command_service: StoreCommandService = Depends(get_command_service)):
+        return await command_service.restore_store(store_id)
+
     @router.put("/{store_id}")
     async def update_store(
         store_id: UUID,
