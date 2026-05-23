@@ -22,6 +22,8 @@ from bsentinel.exceptions import (
     ValidationError,
 )
 
+SUPPORTED_MVP_DOMAINS = {"www.buscalibre.com.co"}
+
 
 class CatalogCommandService:
     def __init__(
@@ -45,6 +47,9 @@ class CatalogCommandService:
             raise ValidationError("Invalid URL")
 
         domain = parsed.netloc.lower()
+        if domain not in SUPPORTED_MVP_DOMAINS:
+            raise UnsupportedStoreError("Unsupported store")
+
         store = await self.stores.get_by_domain(domain)
         if not store or not store.is_active:
             raise UnsupportedStoreError("Unsupported store")

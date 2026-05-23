@@ -24,8 +24,6 @@ from bsentinel.application.services import (
     PricingQueryService,
     RetentionService,
     ScrapingService,
-    StoreCommandService,
-    StoreQueryService,
     SystemQueryService,
 )
 from bsentinel.exceptions import (
@@ -108,8 +106,6 @@ pricing_query_service = PricingQueryService(
     history=history_repository,
 )
 retention_service = RetentionService(jobs=archive_job_repository)
-store_command_service = StoreCommandService(stores=store_repository)
-store_query_service = StoreQueryService(stores=store_repository)
 system_query_service = SystemQueryService(stores=store_repository)
 auth_service = AuthService(
     admin_username=settings.auth_admin_username,
@@ -178,8 +174,6 @@ def _build_sql_services(session: AsyncSession) -> dict[str, Any]:
             history=history,
         ),
         "retention": RetentionService(jobs=jobs),
-        "store_command": StoreCommandService(stores=stores),
-        "store_query": StoreQueryService(stores=stores),
     }
 
 
@@ -237,24 +231,6 @@ async def get_retention_service(
     return _build_sql_services(session)["retention"]
 
 
-async def get_store_command_service(
-    session: AsyncSession | None = Depends(get_optional_session),
-) -> StoreCommandService:
-    if settings.persistence_backend == "in_memory":
-        return store_command_service
-    assert session is not None
-    return _build_sql_services(session)["store_command"]
-
-
-async def get_store_query_service(
-    session: AsyncSession | None = Depends(get_optional_session),
-) -> StoreQueryService:
-    if settings.persistence_backend == "in_memory":
-        return store_query_service
-    assert session is not None
-    return _build_sql_services(session)["store_query"]
-
-
 async def get_auth_service(
     session: AsyncSession | None = Depends(get_optional_session),
 ) -> AuthService:
@@ -306,7 +282,6 @@ root_app = FastAPI(
         {"name": "catalog", "description": "Gestión de catálogo de libros rastreados."},
         {"name": "pricing", "description": "Consulta de historial y comparación de precios."},
         {"name": "retention", "description": "Operaciones de archivado y estado de jobs de retención."},
-        {"name": "stores", "description": "Administración de tiendas y reglas de extracción."},
     ],
     lifespan=lifespan,
 )
@@ -477,8 +452,6 @@ root_app.include_router(
         get_scraping_service,
         get_pricing_service,
         get_retention_service,
-        get_store_command_service,
-        get_store_query_service,
         get_auth_service,
     )
 )

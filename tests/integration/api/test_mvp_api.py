@@ -1,9 +1,5 @@
 from uuid import UUID
 
-import pytest
-
-from bsentinel.infrastructure.scraping.rules import build_default_buscalibre_rules
-
 
 def login_headers(client):
     response = client.post(
@@ -62,6 +58,13 @@ def test_protected_v1_endpoints_reject_anonymous_requests(client):
     assert response.json()["error"]["code"] == "AUTH_INVALID_TOKEN"
 
 
+def test_system_info_reports_buscalibre_only(client):
+    response = client.get("/api/v1/system/info", headers=login_headers(client))
+
+    assert response.status_code == 200
+    assert response.json()["supported_sites"] == ["www.buscalibre.com.co"]
+
+
 def test_create_book_and_list_flow(client):
     payload = {"url": "https://www.buscalibre.com.co/libro-el-principito-isbn-9780156012195"}
     headers = login_headers(client)
@@ -103,126 +106,13 @@ def test_create_book_with_unsupported_store_returns_400(client):
     assert response.json()["error"]["code"] == "UNSUPPORTED_STORE"
 
 
-def test_store_admin_crud_and_catalog_for_new_domain(client):
+def test_store_endpoints_return_404_for_authenticated_clients(client):
     headers = login_headers(client)
-    create_store = client.post(
-        "/api/v1/stores",
-        json={
-            "name": "Demo Store",
-            "domain": "www.demo.com",
-            "country_code": "CO",
-            "scrape_interval_hours": 12,
-            "is_active": True,
-            "extraction_rules": build_default_buscalibre_rules(),
-        },
-        headers=headers,
-    )
-    assert create_store.status_code == 201
-    store_id = create_store.json()["id"]
+    get_response = client.get("/api/v1/stores", headers=headers)
+    post_response = client.post("/api/v1/stores", json={}, headers=headers)
 
-    listed = client.get("/api/v1/stores", headers=headers)
-    assert listed.status_code == 200
-    assert any(item["domain"] == "www.demo.com" for item in listed.json()["items"])
-
-    detail = client.get(f"/api/v1/stores/{store_id}", headers=headers)
-    assert detail.status_code == 200
-    assert detail.json()["domain"] == "www.demo.com"
-
-    patched = client.patch(
-        f"/api/v1/stores/{store_id}",
-        json={"scrape_interval_hours": 4, "is_active": True},
-        headers=headers,
-    )
-    assert patched.status_code == 200
-    assert patched.json()["scrape_interval_hours"] == 4
-
-    create_book = client.post(
-        "/api/v1/catalog/books",
-        json={"url": "https://www.demo.com/libro-demo-isbn-9780321146533"},
-        headers=headers,
-    )
-    assert create_book.status_code == 201
-    assert create_book.json()["site"] == "www.demo.com"
-
-
-def test_store_endpoints_require_admin_authentication(client):
-    response = client.get("/api/v1/stores")
-    assert response.status_code == 401
-    assert response.json()["error"]["code"] == "AUTH_INVALID_TOKEN"
-
-
-def test_store_delete_and_restore_lifecycle(client):
-    headers = login_headers(client)
-    create_store = client.post(
-        "/api/v1/stores",
-        json={
-            "name": "Delete Restore Store",
-            "domain": "www.delete-restore-store.com",
-            "country_code": "CO",
-            "scrape_interval_hours": 12,
-            "is_active": True,
-            "extraction_rules": build_default_buscalibre_rules(),
-        },
-        headers=headers,
-    )
-    assert create_store.status_code == 201
-    store_id = create_store.json()["id"]
-
-    delete_response = client.delete(f"/api/v1/stores/{store_id}", headers=headers)
-    assert delete_response.status_code == 204
-
-    repeated_delete = client.delete(f"/api/v1/stores/{store_id}", headers=headers)
-    assert repeated_delete.status_code == 204
-
-    listed_after_delete = client.get("/api/v1/stores", headers=headers)
-    assert listed_after_delete.status_code == 200
-    assert all(item["id"] != store_id for item in listed_after_delete.json()["items"])
-
-    restore_response = client.post(f"/api/v1/stores/{store_id}/restore", headers=headers)
-    assert restore_response.status_code == 200
-    restored = restore_response.json()
-    assert restored["id"] == store_id
-    assert restored["domain"] == "www.delete-restore-store.com"
-    assert restored["is_active"] is True
-
-    repeated_restore = client.post(f"/api/v1/stores/{store_id}/restore", headers=headers)
-    assert repeated_restore.status_code == 200
-    assert repeated_restore.json()["id"] == store_id
-
-    listed_after_restore = client.get("/api/v1/stores", headers=headers)
-    assert listed_after_restore.status_code == 200
-    assert any(item["id"] == store_id for item in listed_after_restore.json()["items"])
-
-
-@pytest.mark.parametrize(
-    ("method", "path"),
-    [
-        ("delete", "/api/v1/stores/{store_id}"),
-        ("post", "/api/v1/stores/{store_id}/restore"),
-    ],
-)
-def test_store_delete_and_restore_missing_store_returns_404(client, method, path):
-    response = getattr(client, method)(
-        path.format(store_id="11111111-1111-1111-1111-111111111111"),
-        headers=login_headers(client),
-    )
-
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "ENTITY_NOT_FOUND"
-
-
-@pytest.mark.parametrize(
-    ("method", "path"),
-    [
-        ("delete", "/api/v1/stores/not-a-uuid"),
-        ("post", "/api/v1/stores/not-a-uuid/restore"),
-    ],
-)
-def test_store_delete_and_restore_invalid_store_id_returns_422(client, method, path):
-    response = getattr(client, method)(path, headers=login_headers(client))
-
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "REQUEST_VALIDATION_ERROR"
+    assert get_response.status_code == 404
+    assert post_response.status_code == 404
 
 
 def test_delete_and_restore_book(client):

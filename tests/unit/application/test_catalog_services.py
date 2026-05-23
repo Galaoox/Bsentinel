@@ -17,7 +17,11 @@ class FakeMetadataProvider:
 
 
 class FakeScraper:
+    def __init__(self) -> None:
+        self.calls = 0
+
     async def extract_book_details(self, store, product_url: str):
+        self.calls += 1
         if "missing-isbn" in product_url:
             return type("BookDetails", (), {"title": "Broken Book", "authors": ["Unknown"], "isbn": None})()
         return type(
@@ -28,6 +32,11 @@ class FakeScraper:
 
     async def scrape_book(self, store, product_url: str):
         return type("ScrapeResult", (), {"price": 99.9, "status": ACTIVE, "checked_at": None})()
+
+
+class UnexpectedLookupStoreRepository:
+    async def get_by_domain(self, domain: str):
+        raise AssertionError(f"store lookup should not happen for unsupported domain: {domain}")
 
 
 @pytest.mark.asyncio
@@ -50,7 +59,7 @@ async def test_catalog_command_rejects_unsupported_domain():
     storage = InMemoryStore()
     service = CatalogCommandService(
         books=InMemoryBookRepository(storage),
-        stores=InMemoryStoreRepository(storage),
+        stores=UnexpectedLookupStoreRepository(),
         relations=InMemoryRelationRepository(storage),
         metadata=FakeMetadataProvider(),
         scraper=FakeScraper(),
@@ -58,6 +67,53 @@ async def test_catalog_command_rejects_unsupported_domain():
 
     with pytest.raises(UnsupportedStoreError):
         await service.create_book_from_url("https://example.com/books/123")
+
+
+@pytest.mark.asyncio
+async def test_catalog_command_rejects_inactive_buscalibre_store_without_scraping():
+    storage = InMemoryStore()
+    scraper = FakeScraper()
+    stores = InMemoryStoreRepository(storage)
+    seeded_store = next(iter(storage.stores.values()))
+    seeded_store.is_active = False
+    service = CatalogCommandService(
+        books=InMemoryBookRepository(storage),
+        stores=stores,
+        relations=InMemoryRelationRepository(storage),
+        metadata=FakeMetadataProvider(),
+        scraper=scraper,
+    )
+
+    with pytest.raises(UnsupportedStoreError):
+        await service.create_book_from_url("https://www.buscalibre.com.co/books/123")
+
+    assert scraper.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_catalog_command_keeps_seed_store_relation_for_buscalibre_books():
+    storage = InMemoryStore()
+    scraper = FakeScraper()
+    books = InMemoryBookRepository(storage)
+    relations = InMemoryRelationRepository(storage)
+    stores = InMemoryStoreRepository(storage)
+    seeded_store = next(iter(storage.stores.values()))
+    service = CatalogCommandService(
+        books=books,
+        stores=stores,
+        relations=relations,
+        metadata=FakeMetadataProvider(),
+        scraper=scraper,
+    )
+
+    book, relation, site = await service.create_book_from_url(
+        "https://www.buscalibre.com.co/libro-clean-architecture"
+    )
+
+    assert site == "www.buscalibre.com.co"
+    assert relation.book_id == book.id
+    assert relation.store_id == seeded_store.id
+    assert len(await relations.list_for_book(book.id)) == 1
 
 
 @pytest.mark.asyncio

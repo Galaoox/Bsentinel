@@ -1,8 +1,10 @@
 import asyncio
 import importlib
 import sys
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from alembic.config import Config
@@ -13,9 +15,6 @@ from alembic import command
 # Ensure local package import works under `uv run pytest` without editable install.
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
-
-TEST_DB_PATH = Path("/tmp/bsentinel_test.db")
-
 
 class FakeConfiguredScraper:
     async def extract_book_details(self, store, product_url: str):
@@ -52,19 +51,29 @@ class FakeMetadataProvider:
         return {}
 
 
+def _build_test_db_path(base_dir: Path) -> Path:
+    return base_dir / f"bsentinel-test-{uuid4().hex}.db"
 
-def _reset_database() -> None:
-    if TEST_DB_PATH.exists():
-        TEST_DB_PATH.unlink()
+
+def _build_test_db_url(db_path: Path) -> str:
+    return f"sqlite+aiosqlite:///{db_path.as_posix()}"
+
+
+
+def _reset_database(db_path: Path) -> None:
+    with suppress(FileNotFoundError):
+        db_path.unlink()
 
     cfg = Config(str(ROOT_DIR / "alembic.ini"))
     command.upgrade(cfg, "head")
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
+    db_path = _build_test_db_path(tmp_path)
+
     monkeypatch.setenv("PERSISTENCE_BACKEND", "sql")
-    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{TEST_DB_PATH}")
+    monkeypatch.setenv("DATABASE_URL", _build_test_db_url(db_path))
     monkeypatch.setenv("SCRAPING_BROWSER_ENABLED", "false")
 
     bsentinel_pkg = importlib.import_module("bsentinel")
@@ -89,7 +98,9 @@ def client(monkeypatch):
     root_app_module.browser_session.start = fake_start
     root_app_module.browser_session.close = fake_close
 
-    _reset_database()
+    _reset_database(db_path)
     with TestClient(root_app_module.root_app) as test_client:
         yield test_client
     asyncio.run(session_module.dispose_engine())
+    with suppress(FileNotFoundError, PermissionError):
+        db_path.unlink()

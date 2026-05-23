@@ -38,6 +38,18 @@ class RuntimeStub:
         return self._is_started
 
 
+def test_root_app_openapi_tags_do_not_expose_stores_controller():
+    assert [tag["name"] for tag in root_app_module.root_app.openapi_tags] == [
+        "Root",
+        "Health",
+        "auth",
+        "system",
+        "catalog",
+        "pricing",
+        "retention",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_health_check_function_returns_expected_keys():
     payload = await health_check()

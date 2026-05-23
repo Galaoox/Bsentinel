@@ -7,7 +7,7 @@ Backend para rastreo de precios de libros (MVP) con FastAPI y API versionada en 
 El proyecto implementa un MVP funcional para entorno local/dev con:
 
 - API `v1` protegida con autenticación JWT para endpoints funcionales
-- Soporte de tiendas mediante configuración persistida en base de datos
+- Soporte público MVP limitado a **Buscalibre Colombia**
 - Seed inicial de **Buscalibre Colombia** (`www.buscalibre.com.co`)
 - Reglas de extracción por tienda en JSON con fallbacks (`css` / `json_ld`)
 - Gestión de catálogo por ISBN con relaciones libro-tienda
@@ -23,7 +23,7 @@ Estructura por capas (estilo hexagonal):
 - `bsentinel/domain/`: entidades y reglas de negocio puras
 - `bsentinel/application/`: casos de uso y orquestación
 - `bsentinel/infrastructure/`: API, scheduler, scraping, cliente OpenLibrary y persistencia
-- `bsentinel/infrastructure/api/v1/`: rutas separadas por controlador (`auth`, `system`, `catalog`, `pricing`, `retention`, `stores`)
+- `bsentinel/infrastructure/api/v1/`: rutas separadas por controlador (`auth`, `system`, `catalog`, `pricing`, `retention`)
 - `bsentinel/infrastructure/persistence/sqlalchemy/`: modelos ORM, repositorios SQL y sesión
 - `bsentinel/infrastructure/scraping/`: scraper configurado por reglas + runtime principal con Scrapling/Chromium
 - `alembic/`: migraciones de esquema y seed inicial
@@ -40,20 +40,11 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 - Si intentas registrar de nuevo el mismo libro para la misma tienda, la API responde `ENTITY_ALREADY_EXISTS`.
 - El scraping y la extracción ya no dependen de lógica fija de Buscalibre; usan `Store.extraction_rules` persistidas y un navegador compartido con Scrapling `AsyncStealthySession`.
 
-## Administración de Tiendas 🏪
+## Alcance MVP de Sitios 🏪
 
-- `POST /api/v1/stores`
-- `GET /api/v1/stores`
-- `GET /api/v1/stores/{store_id}`
-- `PUT /api/v1/stores/{store_id}`
-- `PATCH /api/v1/stores/{store_id}`
-
-Contrato actual:
-- Endpoints protegidos con rol `admin`.
-- `country_code` usa ISO alpha-2 (`CO`, `MX`, `AR`, ...).
-- `extraction_rules` define campos `title`, `authors`, `isbn`, `price` y opcional `availability`.
-- Cada campo usa `sources` ordenados con `kind` (`css` o `json_ld`), `regex` opcional y `normalizer` opcional.
-- Para precios, los normalizadores explícitos soportados son `price_cop`, `price_decimal` y `price_cop_mixed`; `price_latam` queda solo como alias legacy compatible.
+- La API pública NO expone administración dinámica de tiendas en `/api/v1/stores`.
+- El soporte público actual del MVP está recortado a **Buscalibre Colombia**.
+- Internamente se conservan contratos neutrales por tienda para catálogo, scraping e historial.
 
 ## Endpoints MVP 🔌
 
@@ -71,11 +62,6 @@ Contrato actual:
 - `GET /api/v1/pricing/books/{book_id}/comparison`
 - `POST /api/v1/retention/jobs/archive`
 - `GET /api/v1/retention/jobs/archive/{job_id}`
-- `POST /api/v1/stores`
-- `GET /api/v1/stores`
-- `GET /api/v1/stores/{store_id}`
-- `PUT /api/v1/stores/{store_id}`
-- `PATCH /api/v1/stores/{store_id}`
 
 Nota de contrato de errores v1:
 - Respuesta estándar: `error.code`, `error.message`, `error.details` y `request_id`.
@@ -192,7 +178,8 @@ Fallback en entorno local con venv:
 - `logout` revoca refresh tokens; el access token actual sigue válido hasta expirar.
 - Integración OpenLibrary simplificada (best-effort).
 - Solo se persisten libros cuando la extracción produce un ISBN válido.
-- Aún no existen endpoints de tienda para delete/restore/test/stats.
+- La administración pública multi-store quedó fuera del alcance del MVP actual.
+- El reemplazo profundo de `ConfiguredStoreScraper` sigue fuera de scope en este recorte Buscalibre-only.
 - `tool.uv.dev-dependencies` está deprecado en `pyproject.toml` y debe migrarse a `dependency-groups.dev`.
 
 ## Documentación 📚
