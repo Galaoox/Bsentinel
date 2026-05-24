@@ -7,7 +7,7 @@ This guide starts the current MVP locally with PostgreSQL, Alembic migrations, a
 1. Python 3.12+
 2. `uv`
 3. Docker and Docker Compose
-4. Chromium runtime for Playwright/Scrapling (`make browsers-install`)
+4. Chromium runtime for browser fallback (`make browsers-install`)
 
 ## 1. Create local environment file
 
@@ -35,6 +35,13 @@ JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
 SCRAPING_DELAY=2.0
 SCRAPING_TIMEOUT=30
 SCRAPING_MAX_RETRIES=3
+SCRAPING_RUNTIME=http
+SCRAPING_HTTP_PROXY=http://user:pass@proxy.example:8080
+SCRAPING_HTTP_TIMEOUT=30
+SCRAPING_HTTP_RETRIES=2
+SCRAPING_HTTP_IMPERSONATE=
+SCRAPING_HTTP_HTTP3=false
+SCRAPING_HTTP_STEALTHY_HEADERS=true
 SCRAPING_BROWSER_ENABLED=true
 SCRAPING_BROWSER_HEADLESS=true
 SCRAPING_BROWSER_TIMEOUT_MS=45000
@@ -56,11 +63,13 @@ ENV
 make install
 ```
 
-## 3. Install Chromium for Scrapling
+## 3. Install Chromium for browser fallback
 
 ```bash
 make browsers-install
 ```
+
+If `SCRAPING_RUNTIME=http`, Chromium is not the default runtime. Install it anyway only if you want the browser runtime available as an explicit fallback.
 
 ## 4. Start PostgreSQL
 
@@ -168,6 +177,15 @@ Run:
 ```bash
 make browsers-install
 ```
+
+### HTTP proxy runtime
+
+If you use the default HTTP runtime with a proxy, verify at least:
+
+- `SCRAPING_RUNTIME=http`
+- `SCRAPING_HTTP_PROXY=http://user:pass@host:port`
+
+If the proxy URL includes credentials, the application redacts them in observable logs and error payloads.
 
 ### Invalid admin credentials
 
