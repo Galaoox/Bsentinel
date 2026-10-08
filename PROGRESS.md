@@ -11,7 +11,7 @@
 
 El proyecto cuenta con un MVP funcional con FastAPI, autenticación JWT, persistencia SQL y scraping SSR configurado por tienda.
 
-La API v1 ya no depende de lógica fija por tienda: la configuración de extracción se persiste en `stores.extraction_rules`, existe una API admin básica para administrar tiendas y el catálogo sigue modelado por ISBN con relaciones `book-store`.
+La API v1 ya no depende de lógica fija por tienda: la configuración de extracción se persiste en `stores.extraction_rules`, la administración pública de tiendas no está expuesta (rutas `/api/v1/stores`: 404) y el catálogo sigue modelado por ISBN con relaciones `book-store`.
 
 ## Implementado en Código
 
@@ -25,6 +25,7 @@ Endpoints actualmente disponibles:
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/system/info`
 - `POST /api/v1/catalog/books`
+- `POST /api/v1/catalog/books/bulk`
 - `GET /api/v1/catalog/books`
 - `GET /api/v1/catalog/books/{book_id}`
 - `DELETE /api/v1/catalog/books/{book_id}`
@@ -33,17 +34,12 @@ Endpoints actualmente disponibles:
 - `GET /api/v1/pricing/books/{book_id}/comparison`
 - `POST /api/v1/retention/jobs/archive`
 - `GET /api/v1/retention/jobs/archive/{job_id}`
-- `POST /api/v1/stores`
-- `GET /api/v1/stores`
-- `GET /api/v1/stores/{store_id}`
-- `PUT /api/v1/stores/{store_id}`
-- `PATCH /api/v1/stores/{store_id}`
 
 Notas:
-- Swagger/ReDoc activos (`/docs`, `/redoc`) con agrupación por controlador (`auth`, `system`, `catalog`, `pricing`, `retention`, `stores`).
+- Swagger/ReDoc activos (`/docs`, `/redoc`) con agrupación por controlador (`auth`, `system`, `catalog`, `pricing`, `retention`).
 - Contrato de errores estandarizado con `error.code`, `error.message`, `error.details`, `request_id`.
 - `/api/v1/*` requiere Bearer token salvo `/api/v1/auth/*`.
-- La administración de tiendas usa dependencia de admin.
+- Las tiendas soportadas se configuran internamente mediante seeds y reglas persistidas.
 - Flujo auth MVP: login, refresh con rotación, logout con revocación persistida de refresh token.
 
 ### Arquitectura
@@ -51,7 +47,7 @@ Notas:
 - Estructura en capas (hexagonal): `domain`, `application`, `infrastructure`.
 - API v1 modular por controlador en `bsentinel/infrastructure/api/v1/`.
 - Scheduler local con APScheduler para tareas periódicas.
-- Scraper configurado por reglas persistidas (`css` / `json_ld`) y seed inicial de Buscalibre CO.
+- Scraper configurado por reglas persistidas (`css` / `json_ld`) y seeds de Buscalibre CO y Panamericana CO.
 - Persistencia SQL con repositorios en `bsentinel/infrastructure/persistence/sqlalchemy/`.
 - Seguridad JWT con servicio de aplicación dedicado y adapter de token en `bsentinel/infrastructure/security/`.
 
@@ -59,7 +55,7 @@ Notas:
 
 - Backend por defecto: SQL (`PERSISTENCE_BACKEND=sql`).
 - Migraciones con Alembic (`alembic/`, `alembic.ini`).
-- Esquema inicial creado con seed de tienda Buscalibre CO.
+- Esquema inicial creado con seeds de Buscalibre CO y Panamericana CO.
 - `stores.extraction_rules` persiste configuración JSON/JSONB por tienda.
 - Tabla de archivo incluida: `price_history_archive`.
 - Tabla de revocación de refresh incluida: `revoked_refresh_tokens`.
@@ -71,7 +67,7 @@ Notas:
   - `tests/integration/`
 - Última validación conocida:
   - `make lint` -> OK
-  - `make test` -> `36 passed`
+  - Ejecutar `make test` para el resultado de la revisión actual; PostgreSQL opt-in usa `BULK_TEST_POSTGRES_URL` sobre una base desechable `bulk_test`.
 
 ## Documentación Funcional
 

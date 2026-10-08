@@ -1,11 +1,12 @@
 # language: es
-Feature: Configuración administrativa de tiendas
+Feature: Propuesta futura de configuración administrativa de tiendas
   Como administrador de la API v1
   Quiero crear y mantener tiendas con reglas de extracción
   Para habilitar dominios soportados por el scraping configurado
 
+  # Hoy /api/v1/stores responde 404 y estos escenarios no están implementados.
   Background:
-    Given que la API expone administración de tiendas bajo "/api/v1/stores"
+    Given una futura API de administración de tiendas bajo "/api/v1/stores"
     And que estos endpoints requieren bearer token de administrador
 
   Scenario: Crear una tienda nueva
@@ -70,7 +71,7 @@ And cada source soporta únicamente los tipos "css", "json_ld" o "vtex_property"
     Then la API responde 401
     And el código de error es "AUTH_INVALID_TOKEN"
 
-  Rule: Contrato observable actual
+  Rule: Contrato propuesto para una futura implementación
     - Los endpoints usan UUID como identificador de tienda en path; no usan dominio como key primaria del endpoint.
     - El sistema normaliza el dominio a minúsculas y el country code a mayúsculas.
     - El PATCH exige al menos un campo entre "is_active" y "scrape_interval_hours".

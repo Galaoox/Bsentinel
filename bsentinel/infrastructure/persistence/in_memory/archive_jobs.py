@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import timedelta
 from uuid import UUID
 
+from bsentinel.domain.dates import as_utc
 from bsentinel.domain.models import ArchiveJob, PriceHistoryRecord, now_utc
 
 from .store import InMemoryStore
@@ -37,10 +38,10 @@ class InMemoryArchiveJobRepository:
 
             moved = 0
             for records in by_book.values():
-                records.sort(key=lambda r: r.checked_at, reverse=True)
+                records.sort(key=lambda r: (as_utc(r.checked_at), r.id), reverse=True)
                 keep_ids = {r.id for r in records[:min_active_records_per_book]}
                 for record in records[min_active_records_per_book:]:
-                    if record.checked_at < cutoff and record.id not in keep_ids:
+                    if as_utc(record.checked_at) < cutoff and record.id not in keep_ids:
                         record.archived = True
                         moved += 1
 

@@ -15,7 +15,6 @@ def build_v1_router(
     get_system_service,
     get_catalog_command_service,
     get_catalog_query_service,
-    get_scraping_service,
     get_pricing_service,
     get_retention_service,
     get_auth_service,
@@ -27,7 +26,7 @@ def build_v1_router(
     router.include_router(build_auth_router(get_auth_service))
     router.include_router(build_system_router(get_system_service), dependencies=protected_dependencies)
     router.include_router(
-        build_catalog_router(get_catalog_command_service, get_catalog_query_service, get_scraping_service, get_catalog_bulk_service),
+        build_catalog_router(get_catalog_command_service, get_catalog_query_service, get_catalog_bulk_service),
         dependencies=protected_dependencies,
     )
     router.include_router(build_pricing_router(get_pricing_service), dependencies=protected_dependencies)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from bsentinel.domain.models import Book
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -88,3 +88,24 @@ class SQLBookRepository:
             stmt = stmt.where(BookModel.is_deleted.is_(False))
         result = await self.session.scalars(stmt.order_by(BookModel.created_at.desc()))
         return [to_book(model) for model in result.all()]
+
+    async def list_page(self, *, include_deleted: bool, q: str | None, isbn: str | None,
+                        author: str | None, category: str | None,
+                        page: int, limit: int) -> tuple[list[Book], int]:
+        stmt = select(BookModel)
+        if not include_deleted:
+            stmt = stmt.where(BookModel.is_deleted.is_(False))
+        if q:
+            stmt = stmt.where(BookModel.title.icontains(q, autoescape=True))
+        if isbn:
+            stmt = stmt.where(BookModel.isbn == isbn)
+        if author:
+            stmt = stmt.where(BookModel.authors.any(BookAuthorModel.author.icontains(author, autoescape=True)))
+        if category:
+            stmt = stmt.where(BookModel.categories.any(BookCategoryModel.category.icontains(category, autoescape=True)))
+        total = await self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+        stmt = (stmt.options(selectinload(BookModel.authors), selectinload(BookModel.categories))
+                .order_by(BookModel.created_at.desc(), BookModel.id.desc())
+                .limit(limit).offset((page - 1) * limit))
+        result = await self.session.scalars(stmt)
+        return [to_book(model) for model in result.all()], total

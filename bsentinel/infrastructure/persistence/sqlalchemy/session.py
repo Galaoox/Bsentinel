@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from bsentinel import settings
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -14,6 +15,18 @@ from sqlalchemy.ext.asyncio import (
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+
+
+def configure_sqlite_unicode(engine: AsyncEngine) -> None:
+    if engine.dialect.name == "sqlite":
+        event.listen(engine.sync_engine, "connect", _sqlite_unicode_lower)
+
+
+def _sqlite_unicode_lower(connection, _record) -> None:
+    connection.create_function(
+        "lower", 1, lambda value: str(value).lower() if value is not None else None,
+        deterministic=True,
+    )
 
 
 def get_async_engine() -> AsyncEngine:
@@ -26,6 +39,7 @@ def get_async_engine() -> AsyncEngine:
             max_overflow=settings.database_max_overflow,
             future=True,
         )
+        configure_sqlite_unicode(_engine)
     return _engine
 
 

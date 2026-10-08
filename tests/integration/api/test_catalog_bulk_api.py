@@ -70,7 +70,7 @@ def test_scraping_error_sanitized_and_rolls_back(client, monkeypatch):
                                 diagnostics={'proxy': 'http://user:password@proxy.example:8000'})
         return await original(store, url)
     monkeypatch.setattr(root_app.scraper_client, 'scrape_book', fail_second)
-    second = URL.replace('9780134494166', '9780134494167') + '-second'
+    second = URL.replace('9780134494166', '9780132350884') + '-second'
     response = client.post(ENDPOINT, json={'urls': [URL, second]}, headers=headers(client))
     assert response.status_code == 400
     assert response.json()['error']['details']['index'] == 1
@@ -84,7 +84,7 @@ def test_memory_backend_bulk_is_atomic(client, monkeypatch, fails):
     import importlib
     module = importlib.import_module('bsentinel.infrastructure.api.root_app')
     monkeypatch.setattr(module.settings, 'persistence_backend', 'in_memory')
-    urls = [URL, 'invalid' if fails else URL.replace('9780134494166', '9780134494167')]
+    urls = [URL, 'invalid' if fails else URL.replace('9780134494166', '9780132350884')]
     auth = headers(client)
     response = client.post(ENDPOINT, json={'urls': urls}, headers=auth)
     assert response.status_code == (400 if fails else 201)
@@ -94,7 +94,8 @@ def test_memory_backend_bulk_is_atomic(client, monkeypatch, fails):
 
 
 @pytest.mark.parametrize('method', ['commit', 'flush'])
-def test_persistence_failure_never_returns_created(client, monkeypatch, method):
+@pytest.mark.parametrize('bulk', [False, True])
+def test_persistence_failure_never_returns_created(client, monkeypatch, method, bulk):
     from sqlalchemy.ext.asyncio import AsyncSession
     auth = headers(client)
     original = getattr(AsyncSession, method)
@@ -104,17 +105,25 @@ def test_persistence_failure_never_returns_created(client, monkeypatch, method):
         return await original(self, *args, **kwargs)
     monkeypatch.setattr(AsyncSession, method, fail_bulk)
     monkeypatch.setattr(client._transport, 'raise_server_exceptions', False)
-    response = client.post(ENDPOINT, json={'urls': [URL]}, headers=auth)
+    response = client.post(ENDPOINT if bulk else '/api/v1/catalog/books',
+                           json={'urls': [URL]} if bulk else {'url': URL}, headers=auth)
     assert response.status_code == 500
     assert 'private' not in response.text
     assert response.json()['request_id'] == response.headers['X-Request-ID']
     assert client.get('/api/v1/catalog/books', headers=auth).json()['meta']['total'] == 0
     assert_sql_catalog_counts((0, 0, 0))
+    monkeypatch.setattr(AsyncSession, method, original)
+    retry = client.post(ENDPOINT if bulk else '/api/v1/catalog/books',
+                        json={'urls': [URL]} if bulk else {'url': URL}, headers=auth)
+    assert retry.status_code == 201, retry.text
 
 
 def test_bulk_twenty_items_are_persisted(client):
     auth = headers(client)
-    urls = [URL.replace('9780134494166', str(9780134494166 + i)) for i in range(20)]
+    prefixes = [str(978013449416 + i) for i in range(20)]
+    isbns = [prefix + str((-sum(int(char) * (1 if index % 2 == 0 else 3)
+                               for index, char in enumerate(prefix))) % 10) for prefix in prefixes]
+    urls = [URL.replace('9780134494166', isbn) for isbn in isbns]
     response = client.post(ENDPOINT, json={'urls': urls}, headers=auth)
     assert response.status_code == 201
     payload = response.json()
@@ -279,10 +288,10 @@ def test_second_item_failure_removes_books_relations_and_histories(client, monke
     elif failure == 'missing_isbn':
         second = 'https://www.buscalibre.com.co/book-no-isbn'
     else:
-        second = URL.replace('9780134494166', '9780134494167')
+        second = URL.replace('9780134494166', '9780132350884')
         original = module.metadata_client.enrich_by_isbn
         async def fail_second(isbn):
-            if isbn == '9780134494167':
+            if isbn == '9780132350884':
                 raise RuntimeError('private metadata infrastructure detail')
             return await original(isbn)
         monkeypatch.setattr(module.metadata_client, 'enrich_by_isbn', fail_second)

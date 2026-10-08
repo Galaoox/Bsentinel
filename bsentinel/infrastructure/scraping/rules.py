@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+ISBN_REGEX = r"(?<![0-9Xx])((?:97[89][\s-]*(?:[0-9][\s-]*){9}[0-9])|(?:[0-9][\s-]*){9}[0-9Xx])(?![0-9Xx])"
 _DEFAULT_BUSCALIBRE_RULES = {
     "title": {
         "sources": [
@@ -26,7 +27,7 @@ _DEFAULT_BUSCALIBRE_RULES = {
     "isbn": {
         "sources": [
             {"kind": "json_ld", "path": "isbn", "normalizer": "isbn_digits"},
-            {"kind": "css", "selector": "body", "attribute": "text", "regex": "(97[89]\\d{10}|\\d{9}[\\dXx])", "normalizer": "isbn_digits"},
+            {"kind": "css", "selector": "body", "attribute": "text", "regex": ISBN_REGEX, "normalizer": "isbn_digits"},
         ]
     },
     "price": {

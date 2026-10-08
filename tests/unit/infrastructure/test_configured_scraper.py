@@ -464,10 +464,8 @@ async def test_panamericana_does_not_use_internal_gtin_when_isbn_property_is_mis
         extraction_rules=build_default_panamericana_rules(),
     )
 
-    with pytest.raises(ScrapingError) as exc_info:
-        await scraper.extract_book_details(store, PANAMERICANA_URL)
-
-    assert exc_info.value.reason == "isbn_not_found"
+    details = await scraper.extract_book_details(store, PANAMERICANA_URL)
+    assert details.isbn is None
 
 
 def test_price_normalizers_parse_expected_formats():
@@ -478,6 +476,26 @@ def test_price_normalizers_parse_expected_formats():
     assert scraper._normalize_value("price_cop", "41.850") == 41850.0
     assert scraper._normalize_value("price_decimal", "41850.50") == 41850.5
     assert scraper._normalize_value("price_latam", "41850.00") == 41850.0
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('ISBN:978-0-132-35088-4', ['978-0-132-35088-4']),
+    ('ISBN:19780132350884', []), ('ISBN:97801323508840', []),
+    ('ISBN:9780132350885', []),
+])
+def test_custom_isbn_regex_preserves_context_and_rejects_truncated_tokens(text, expected):
+    scraper = ConfiguredStoreScraper()
+    source = {'kind': 'json_ld', 'path': 'isbn', 'regex': r'ISBN:\s*([0-9-]{10,17})',
+              'normalizer': 'isbn_digits'}
+    assert scraper._extract_source_values(source, None, {'isbn': text}) == expected
+
+
+async def test_invalid_isbn_source_uses_valid_fallback():
+    product = {'name': 'Book', 'author': [{'name': 'Author'}], 'isbn': '9780132350885'}
+    html = '<html><body>ISBN: 978-0-132-35088-4</body><script type="application/ld+json">' + json.dumps({'@type': 'Product', **product}) + '</script></html>'
+    scraper = ConfiguredStoreScraper(browser_session=StubBrowserSession(build_response(html)))
+    details = await scraper.extract_book_details(Store(extraction_rules=build_default_buscalibre_rules()), 'https://www.buscalibre.com.co/book')
+    assert details.isbn == '9780132350884'
 
 
 def test_price_normalizers_return_none_for_invalid_values():

@@ -16,7 +16,7 @@ from bsentinel.infrastructure.persistence.in_memory import (
 )
 from bsentinel.infrastructure.persistence.in_memory.transactions import InMemoryCatalogTransaction
 
-URL = 'https://www.buscalibre.com.co/book-isbn-1'
+URL = 'https://www.buscalibre.com.co/book-isbn-9780134494166'
 
 
 class Scraper:
@@ -73,16 +73,16 @@ async def test_second_item_failure_preserves_previous_state(failure):
     previous = (dict(store.books), dict(store.relations), dict(store.history))
     class FailingMetadata(Metadata):
         async def enrich_by_isbn(self, isbn):
-            if isbn == '3':
+            if isbn == '9780132350884':
                 raise RuntimeError('Metadata infrastructure unavailable')
             return await super().enrich_by_isbn(isbn)
     class FailingScraper(Scraper):
         async def scrape_book(self, store, url):
-            if url.endswith('3'):
+            if url.endswith('9780132350884'):
                 raise ScrapingError('Scraping unavailable')
             return await super().scrape_book(store, url)
     kwargs = {'metadata': FailingMetadata()} if failure == 'metadata' else {'scraper': FailingScraper()}
     expected = RuntimeError if failure == 'metadata' else BulkItemError
     with pytest.raises(expected):
-        await service(store, **kwargs).create_books([URL.replace('isbn-1', 'isbn-2'), URL.replace('isbn-1', 'isbn-3')])
+        await service(store, **kwargs).create_books([URL.replace('9780134494166', '9780321125217'), URL.replace('9780134494166', '9780132350884')])
     assert (store.books, store.relations, store.history) == previous

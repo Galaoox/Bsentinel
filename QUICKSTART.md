@@ -199,3 +199,19 @@ Verify `JWT_SECRET_KEY`, `JWT_ALGORITHM`, and token expiration values in `secret
 - `Readme.md`
 - `PROGRESS.md`
 - `docs/README.md`
+
+## Data and transaction behavior
+
+Back up the database before `make migrate`. Revision `0007_normalize_isbn` only
+normalizes valid, unambiguous ISBN groups (including deleted books), and logs
+IDs/counts for invalid, empty and conflicting values. Collisions and custom
+extraction rules remain intact. Downgrade cannot recover previous spelling;
+restore the backup to recover it. See [migration policy](Readme.md#migración-parcial-de-isbn).
+
+ISBN-10/13 checksums are required; spaces/hyphens are removed and `x` becomes `X`.
+The formats remain distinct identities. Individual creation commits book,
+relation, initial price and history together before returning `201`.
+Scheduler batches commit each relation separately: scraping/unsupported-store
+failures continue; database/unexpected failures stop with prior commits preserved.
+`/api/v1/stores` returns `404`. Archive responses expose `id`; SQL moves rows
+between active/archive tables while memory marks them `archived`.
