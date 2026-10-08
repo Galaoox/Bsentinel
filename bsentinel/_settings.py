@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +26,8 @@ class Settings(BaseSettings):
     database_max_overflow: int = 10
 
     # Configuración de scraping
+    scraping_concurrency: int = Field(default=3, ge=1, le=3)
+    scraping_block_cooldown_minutes: int = Field(default=60, ge=1)
     scraping_delay: float = 2.0  # Segundos entre peticiones a la misma tienda
     scraping_timeout: int = 30  # Timeout en segundos
     scraping_max_retries: int = 3
@@ -48,7 +51,8 @@ class Settings(BaseSettings):
     scraping_browser_real_chrome: bool = False
 
     # Configuración del scheduler
-    scheduler_scrape_interval_hours: float = 6
+    scheduler_scrape_interval_hours: float = 6  # Deprecated: fixed daily Colombia windows.
+    scheduler_scrape_tick_minutes: int = Field(default=20, ge=1)
 
     # Configuración de OpenLibrary API
     openlibrary_api_url: str = "https://openlibrary.org"

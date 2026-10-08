@@ -1,7 +1,8 @@
 from bsentinel._settings import Settings
 
 
-def test_settings_defaults():
+def test_settings_defaults(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     cfg = Settings(_env_file=None)
     assert cfg.app_name == "bsentinel"
     assert cfg.app_version == "1.0.0"

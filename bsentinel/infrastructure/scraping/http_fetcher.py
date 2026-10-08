@@ -6,7 +6,9 @@ from typing import Any
 
 from scrapling.fetchers import FetcherSession
 
+from bsentinel.exceptions import ScrapingError
 from bsentinel.infrastructure.scraping.sanitization import sanitize_proxy_credentials
+from bsentinel.infrastructure.scraping.traffic import discard_event, instrument_transport
 
 
 class HttpFetcherSession:
@@ -20,7 +22,9 @@ class HttpFetcherSession:
         http3: bool = False,
         stealthy_headers: bool = True,
         proxy: str | None = None,
+        traffic_sink=discard_event,
     ) -> None:
+        self.traffic_sink = traffic_sink
         self._effective_config = {
             "profile": profile,
             "timeout": timeout,
@@ -56,7 +60,18 @@ class HttpFetcherSession:
         if self._session is None:
             raise RuntimeError("HTTP fetcher session is not initialized")
         try:
-            return await self._session.get(url)
+            # Installed Scrapling warns against concurrent use of one curl session.
+            # Each request owns its response/cookies/impersonation state and retry loop.
+            async with FetcherSession(**self._config) as session:
+                instrument_transport(session, self.traffic_sink)
+                # Scrapling 0.4.2 merges an omitted request proxy as explicit None,
+                # overriding the session default. Never rely on that default.
+                request_options = {"proxy": self._config["proxy"]} if self._config["proxy"] else {}
+                return await session.get(url, **request_options)
+        except ScrapingError:
+            # Admission errors are already safe and carry typed reason/UTC metadata.
+            # They are not CurlError and must not enter Scrapling's network retry loop.
+            raise
         except Exception as exc:
             sanitized_message = sanitize_proxy_credentials(str(exc))
             raise type(exc)(sanitized_message) from exc

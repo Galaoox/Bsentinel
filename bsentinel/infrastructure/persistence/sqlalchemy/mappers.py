@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from uuid import UUID
 
 from bsentinel.domain.models import ArchiveJob, Book, BookStoreRelation, PriceHistoryRecord, Store
@@ -55,6 +56,11 @@ def to_book(model: BookModel) -> Book:
     )
 
 
+def _aware(value: datetime | None) -> datetime | None:
+    # SQLite drops offsets; all stored schedule values are UTC.
+    return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
+
+
 def to_relation(model: BookStoreRelationModel) -> BookStoreRelation:
     return BookStoreRelation(
         id=UUID(model.id),
@@ -63,7 +69,10 @@ def to_relation(model: BookStoreRelationModel) -> BookStoreRelation:
         product_url=model.product_url,
         current_price=model.current_price,
         status=model.status,
-        last_checked=model.last_checked,
+        last_checked=_aware(model.last_checked),
+        scrape_group=model.scrape_group,
+        next_check_at=_aware(model.next_check_at),
+        scrape_generation=model.scrape_generation,
         created_at=model.created_at,
     )
 

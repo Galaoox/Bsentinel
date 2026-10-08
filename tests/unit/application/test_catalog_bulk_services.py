@@ -20,6 +20,11 @@ URL = 'https://www.buscalibre.com.co/book-isbn-1'
 
 
 class Scraper:
+    async def extract_product(self, store, url):
+        from bsentinel.application.ports.external import ProductExtraction
+        return ProductExtraction(await self.extract_book_details(store, url),
+                                 await self.scrape_book(store, url))
+
     async def extract_book_details(self, store, url):
         return SimpleNamespace(title=url, authors=['Fixture Author'], isbn=url.split('isbn-')[1])
 
@@ -55,6 +60,37 @@ async def test_bulk_service_orders_items_and_reuses_isbn():
     assert len(store.books) == 1
     assert len(store.relations) == len(store.history) == 2
     assert next(iter(store.books.values())).publisher == 'Fixture Publisher'
+
+
+async def test_bulk_service_preserves_alias_input_and_returns_canonical_site():
+    store = InMemoryStore()
+    urls = [
+        'https://buscalibre.com.co/book-isbn-1?ref=affiliate%2Fid',
+        'https://panamericana.com.co/book-isbn-2',
+    ]
+
+    result = await service(store).create_books(urls)
+
+    assert [item['url'] for item in result['items']] == urls
+    assert [item['site'] for item in result['items']] == [
+        'www.buscalibre.com.co',
+        'www.panamericana.com.co',
+    ]
+    assert [relation.product_url for relation in store.relations.values()] == [
+        'https://www.buscalibre.com.co/book-isbn-1?ref=affiliate%2Fid',
+        'https://www.panamericana.com.co/book-isbn-2',
+    ]
+
+
+async def test_bulk_service_duplicate_alias_aborts_without_partial_state():
+    store = InMemoryStore()
+    urls = [URL, 'https://buscalibre.com.co/book-isbn-1']
+
+    with pytest.raises(BulkItemError) as exc:
+        await service(store).create_books(urls)
+
+    assert exc.value.index == 1
+    assert not store.books and not store.relations and not store.history
 
 
 async def test_duplicate_relation_aborts_without_partial_state():

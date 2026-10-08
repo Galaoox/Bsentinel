@@ -63,7 +63,8 @@ async def test_http_fetcher_session_starts_fetches_and_closes(monkeypatch: pytes
     await session.close()
 
     assert session.is_started is False
-    assert result == {"url": "https://example.com/book", "kwargs": {}}
+    request_options = {"proxy": "http://user:pass@proxy.example:8080"}
+    assert result == {"url": "https://example.com/book", "kwargs": request_options}
     assert created["manager"].kwargs == {
         "timeout": 15,
         "retries": 4,
@@ -72,7 +73,7 @@ async def test_http_fetcher_session_starts_fetches_and_closes(monkeypatch: pytes
         "stealthy_headers": False,
         "proxy": "http://user:pass@proxy.example:8080",
     }
-    assert created["manager"].client.calls == [("https://example.com/book", {})]
+    assert created["manager"].client.calls == [("https://example.com/book", request_options)]
     assert created["manager"].closed is True
     assert session.effective_config == {
         "profile": "chrome_stable",

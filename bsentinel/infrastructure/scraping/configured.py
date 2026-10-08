@@ -11,8 +11,10 @@ from datetime import UTC, datetime
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
+from bsentinel.application.ports.external import ProductExtraction
 from bsentinel.domain.models import ACTIVE, UNKNOWN, Store
 from bsentinel.exceptions import ScrapingError
+from bsentinel.infrastructure.scraping.store_guard import Admission, fetch_admission
 
 OUT_OF_STOCK = "agotado"
 ISBN_PATTERN = re.compile(r"(97[89]\d{10}|\d{9}[\dXx])")
@@ -29,7 +31,6 @@ SUSPICIOUS_MARKERS = (
     "enable javascript and cookies",
     "verify your request",
     "just a moment",
-    "captcha",
 )
 SUSPICIOUS_MARKER_PATTERNS = tuple(
     re.compile(rf"\b{re.escape(marker)}\b") for marker in SUSPICIOUS_MARKERS
@@ -62,11 +63,13 @@ class ConfiguredStoreScraper:
         self,
         browser_session: Any | None = None,
         *,
+        store_guard: Any | None = None,
         transient_retry_attempts: int = 2,
         transient_retry_delay_ms: int = 250,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._session = browser_session
+        self._store_guard = store_guard
         self._transient_retry_attempts = max(0, int(transient_retry_attempts))
         self._transient_retry_delay_ms = max(0, int(transient_retry_delay_ms))
         self._sleep = sleep
@@ -77,6 +80,20 @@ class ConfiguredStoreScraper:
     async def extract_book_details(self, store: Store, product_url: str) -> ExtractedBookDetails:
         page = await self._fetch_page(store, product_url)
         product = self._extract_product_json_ld(page, product_url)
+        return self._extract_details(store, product_url, page, product)
+
+    async def extract_product(self, store: Store, product_url: str) -> ProductExtraction:
+        page = await self._fetch_page(store, product_url)
+        checked_at = datetime.now(UTC)
+        product = self._extract_product_json_ld(page, product_url)
+        return ProductExtraction(
+            details=self._extract_details(store, product_url, page, product),
+            result=self._extract_result(store, page, product, checked_at),
+        )
+
+    def _extract_details(
+        self, store: Store, product_url: str, page: Any, product: dict[str, Any],
+    ) -> ExtractedBookDetails:
 
         title, title_attempts = self._extract_text_field_with_attempts(store, "title", page, product)
         authors, author_attempts = self._extract_list_field_with_attempts(store, "authors", page, product)
@@ -113,7 +130,11 @@ class ConfiguredStoreScraper:
         page = await self._fetch_page(store, product_url)
         product = self._extract_product_json_ld(page, product_url)
         checked_at = datetime.now(UTC)
+        return self._extract_result(store, page, product, checked_at)
 
+    def _extract_result(
+        self, store: Store, page: Any, product: dict[str, Any], checked_at: datetime,
+    ) -> ScrapeResult:
         status = self._extract_text_field(store, "availability", page, product) or ACTIVE
         price_value = self._extract_text_field(store, "price", page, product)
         if isinstance(price_value, (int, float)):
@@ -135,7 +156,7 @@ class ConfiguredStoreScraper:
             raise ScrapingError(
                 f"Scraping runtime is not initialized for store {store.domain}",
                 reason="runtime_unavailable",
-                diagnostics={"store_domain": store.domain, "product_url": product_url},
+                diagnostics={"store_domain": store.domain, "store_id": str(store.id)},
             )
 
         try:
@@ -144,7 +165,22 @@ class ConfiguredStoreScraper:
             last_classification: PageClassification | None = None
 
             for attempt in range(1, self._transient_retry_attempts + 2):
-                page = await self._session.fetch(product_url)
+                if self._store_guard is not None:
+                    # Known pauses fail fast even while other stores own every permit.
+                    # Runtime/transport still recheck after queueing to close races.
+                    await self._store_guard.check(store)
+                if self._store_guard is None:
+                    page = await self._session.fetch(product_url)
+                elif getattr(self._session, "handles_store_admission", False):
+                    token = fetch_admission.set(Admission(self._store_guard, store, self._classify_page_response))
+                    try:
+                        page = await self._session.fetch(product_url)
+                    finally:
+                        fetch_admission.reset(token)
+                else:
+                    async with self._store_guard.request(store, self._classify_page_response) as publish:
+                        page = await self._session.fetch(product_url)
+                        await publish(page)
                 classification = self._classify_page_response(store, page)
 
                 if classification.kind == "usable":
@@ -181,7 +217,7 @@ class ConfiguredStoreScraper:
             raise ScrapingError(
                 f"Unable to fetch page for store {store.domain}",
                 reason="fetch_failed",
-                diagnostics={"store_domain": store.domain, "product_url": product_url},
+                diagnostics={"store_domain": store.domain, "store_id": str(store.id)},
             )
         except Exception as exc:  # pragma: no cover - network/runtime behavior depends on target site
             if isinstance(exc, ScrapingError):
@@ -191,7 +227,6 @@ class ConfiguredStoreScraper:
                 reason="fetch_failed",
                 diagnostics={
                     "store_domain": store.domain,
-                    "product_url": product_url,
                     "error_type": type(exc).__name__,
                 },
             ) from exc
@@ -206,7 +241,19 @@ class ConfiguredStoreScraper:
         body_text = body_bytes.decode(getattr(page, "encoding", "utf-8") or "utf-8", errors="ignore").strip()
         body_text_lower = body_text.lower()
         status_code = int(getattr(page, "status", 0) or 0)
-        content_type = str((getattr(page, "headers", {}) or {}).get("content-type", "")).lower()
+        headers = {str(k).lower(): str(v).strip().lower() for k, v in (getattr(page, "headers", {}) or {}).items()}
+        content_type = headers.get("content-type", "")
+        action = headers.get("x-amzn-waf-action", "")
+        aws_human_page = (
+            re.search(r"<title[^>]*>\s*human\s+verification\s*</title>", body_text_lower)
+            and re.search(r'<script\b[^>]*\bsrc=[\"\'][^\"\']*\.awswaf\.com/[^\"\']*(?:challenge|captcha)\.js', body_text_lower)
+        )
+        if action in {"captcha", "challenge"} or aws_human_page:
+            reason = "challenge_blocked" if action == "challenge" else "captcha_blocked"
+            return PageClassification(
+                kind="blocked", reason=reason,
+                signals={"status_code": status_code, "body_length": len(body_bytes), "challenge_detected": True},
+            )
 
         if status_code >= 400:
             return PageClassification(
@@ -411,7 +458,6 @@ class ConfiguredStoreScraper:
     ) -> ScrapingError:
         diagnostics = {
             "store_domain": store.domain,
-            "product_url": product_url,
             "field_name": field_name,
             "source_attempts": attempts,
             "product_json_ld_found": bool(product),
@@ -436,8 +482,6 @@ class ConfiguredStoreScraper:
     ) -> ScrapingError:
         diagnostics = {
             "store_domain": store.domain,
-            "product_url": product_url,
-            "final_url": str(getattr(page, "url", product_url)),
             "status_code": getattr(page, "status", None),
             "content_type": (getattr(page, "headers", {}) or {}).get("content-type"),
             "body_length": len(self._read_body(page)),
@@ -465,8 +509,6 @@ class ConfiguredStoreScraper:
     ) -> ScrapingError:
         diagnostics = {
             "store_domain": store.domain,
-            "product_url": product_url,
-            "final_url": str(getattr(page, "url", product_url)),
             "status_code": getattr(page, "status", None),
             "content_type": (getattr(page, "headers", {}) or {}).get("content-type"),
             "body_length": len(self._read_body(page)),

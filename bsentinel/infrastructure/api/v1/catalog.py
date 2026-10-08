@@ -37,8 +37,8 @@ def build_catalog_router(get_command_service, get_query_service, get_scraping_se
         command_service: CatalogCommandService = Depends(get_command_service),
         scraping_service: ScrapingService = Depends(get_scraping_service),
     ):
-        book, relation, store_domain = await command_service.create_book_from_url(payload.url)
-        await scraping_service.scrape_relation(relation)
+        book, relation, store_domain, result = await command_service.create_book_from_url(payload.url)
+        await scraping_service.record_result(relation, result)
 
         return {
             "book_id": str(book.id),

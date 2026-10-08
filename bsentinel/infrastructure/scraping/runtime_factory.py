@@ -7,6 +7,7 @@ from typing import Protocol, runtime_checkable
 
 from bsentinel.infrastructure.scraping.browser import StealthBrowserSession
 from bsentinel.infrastructure.scraping.http_fetcher import HttpFetcherSession
+from bsentinel.infrastructure.scraping.limited_runtime import LimitedRuntime
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,10 @@ class ScrapingRuntime(Protocol):
 
 
 def build_scraping_runtime(settings: object) -> ScrapingRuntime:
+    return LimitedRuntime(_build_backend(settings), getattr(settings, "scraping_concurrency", 3))
+
+
+def _build_backend(settings: object) -> ScrapingRuntime:
     runtime = getattr(settings, "scraping_runtime", "http")
 
     if runtime == "http":
@@ -66,6 +71,8 @@ def build_scraping_runtime(settings: object) -> ScrapingRuntime:
         )
 
     if runtime == "browser":
+        if getattr(settings, "scraping_http_proxy", None):
+            raise ValueError("Browser runtime does not support the configured proxy; use HTTP runtime")
         return StealthBrowserSession(
             headless=getattr(settings, "scraping_browser_headless"),
             timeout_ms=getattr(settings, "scraping_browser_timeout_ms"),

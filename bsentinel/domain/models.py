@@ -56,6 +56,9 @@ class BookStoreRelation:
     current_price: float | None = None
     status: str = UNKNOWN
     last_checked: datetime | None = None
+    scrape_group: int | None = None
+    next_check_at: datetime | None = None
+    scrape_generation: int = 0
     created_at: datetime = field(default_factory=now_utc)
 
 

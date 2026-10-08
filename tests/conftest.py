@@ -16,7 +16,56 @@ from alembic import command
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
+@pytest.fixture
+async def schedule_db(tmp_path):
+    import os
+    from datetime import UTC
+
+    from sqlalchemy import text
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from bsentinel.infrastructure.persistence.sqlalchemy.base import Base
+    from bsentinel.infrastructure.persistence.sqlalchemy.models import BookModel, StoreModel
+    url = os.environ.get("SCHEDULE_TEST_POSTGRES_URL")
+    admin = None
+    if url:
+        parsed = make_url(url)
+        assert parsed.host == "127.0.0.1" and parsed.port != 5432 and parsed.database == "bsentinel_schedule_test"
+        schema = "schedule_" + uuid4().hex
+        admin = create_async_engine(url)
+        async with admin.begin() as conn:
+            await conn.execute(text(f"CREATE SCHEMA {schema}"))
+        engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
+    else:
+        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path}/schedule.db')
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        now = datetime(2026, 10, 8, tzinfo=UTC)
+        store = StoreModel(id=str(uuid4()), name='fixture', domain='fixture.invalid', country_code='CO', created_at=now)
+        book = BookModel(id=str(uuid4()), title='fixture', created_at=now)
+        session.add_all([store, book])
+        await session.commit()
+        ids = (book.id, store.id)
+    try:
+        yield factory, ids
+    finally:
+        await engine.dispose()
+        if admin is not None:
+            async with admin.begin() as conn:
+                await conn.execute(text(f"DROP SCHEMA {schema} CASCADE"))
+            await admin.dispose()
+
+
+
 class FakeConfiguredScraper:
+    async def extract_product(self, store, product_url: str):
+        from bsentinel.application.ports.external import ProductExtraction
+        return ProductExtraction(await self.extract_book_details(store, product_url),
+                                 await self.scrape_book(store, product_url))
+
     async def extract_book_details(self, store, product_url: str):
         slug = product_url.rstrip("/").split("/")[-1]
         title = slug.replace("-isbn-", " ").replace("-", " ").title()

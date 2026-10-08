@@ -24,6 +24,7 @@ coverage.xml
 # Environment
 .env
 secrets/.env
+secrets/*.env
 
 # Git
 .git/

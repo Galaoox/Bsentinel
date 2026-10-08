@@ -8,6 +8,7 @@ from uuid import uuid4
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -20,6 +21,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+from .traffic_model import TrafficEventModel as TrafficEventModel
 
 JSON_VARIANT = JSON().with_variant(JSONB, "postgresql")
 
@@ -41,6 +43,14 @@ class StoreModel(Base):
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StoreBlockModel(Base):
+    __tablename__ = "scraping_store_blocks"
+
+    store_id: Mapped[str] = mapped_column(String(36), ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True)
+    blocked_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reason: Mapped[str] = mapped_column(String(50), nullable=False)
 
 
 class BookModel(Base):
@@ -85,7 +95,10 @@ class BookCategoryModel(Base):
 
 class BookStoreRelationModel(Base):
     __tablename__ = "book_store_relations"
-    __table_args__ = (UniqueConstraint("book_id", "store_id", name="uq_book_store_relation"),)
+    __table_args__ = (
+        UniqueConstraint("book_id", "store_id", name="uq_book_store_relation"),
+        CheckConstraint("scrape_group BETWEEN 0 AND 2", name="ck_relation_scrape_group"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     book_id: Mapped[str] = mapped_column(String(36), ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -94,6 +107,9 @@ class BookStoreRelationModel(Base):
     current_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     last_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scrape_group: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    next_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    scrape_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
