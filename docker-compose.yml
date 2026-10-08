@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Base de datos PostgreSQL para desarrollo local
   postgres:
@@ -28,6 +26,7 @@ services:
       target: base
     environment:
       - APP_ENVIRONMENT=local
+      - DATABASE_URL=postgresql+asyncpg://bsentinel:bsentinel@postgres:5432/bsentinel
     env_file:
       - secrets/.env
     ports:

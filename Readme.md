@@ -79,6 +79,14 @@ Nota de contrato de errores v1:
 
 ## Ejecución local ▶️
 
+La aplicación carga `secrets/.env`. En la primera ejecución, copia
+`secrets/.env.example` a `secrets/.env` (`Copy-Item secrets/.env.example secrets/.env`
+en PowerShell, o `cp secrets/.env.example secrets/.env` en Bash).
+Si el archivo ya existe, incorpora las variables faltantes de la plantilla.
+Para usar un proxy, descomenta `SCRAPING_HTTP_PROXY` y sustituye la URL de ejemplo
+por el endpoint y las credenciales de tu proveedor. Esta opción se aplica con
+`SCRAPING_RUNTIME=http`; sin ella, la conexión es directa.
+
 Atajo recomendado con `Makefile`:
 
 ```bash
@@ -88,6 +96,13 @@ make db-up
 make migrate
 make run
 ```
+
+`make browsers-install` solo es necesario si seleccionas `SCRAPING_RUNTIME=browser`.
+El runtime HTTP no cambia automáticamente al navegador cuando falla.
+
+Para ejecutar también la API en Docker, sigue la alternativa de Docker Compose
+en [QUICKSTART.md](QUICKSTART.md#alternative-run-the-api-and-database-with-docker-compose).
+Compose configura la conexión interna a PostgreSQL mediante el servicio `postgres`.
 
 Equivalente con comandos directos:
 
