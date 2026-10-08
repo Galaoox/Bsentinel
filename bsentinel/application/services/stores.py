@@ -10,11 +10,11 @@ from uuid import UUID
 from scrapy import Selector
 
 from bsentinel.application.ports import StoreRepositoryPort
-from bsentinel.domain.models import Store
+from bsentinel.domain.models import Store, now_utc
 from bsentinel.exceptions import EntityAlreadyExistsError, EntityDoesNotExistError, ValidationError
 
 ALPHA2_PATTERN = re.compile(r"^[A-Z]{2}$")
-SUPPORTED_SOURCE_KINDS = {"css", "json_ld"}
+SUPPORTED_SOURCE_KINDS = {"css", "json_ld", "vtex_property"}
 SUPPORTED_NORMALIZERS = {
     "text_trim",
     "isbn_digits",
@@ -111,11 +111,33 @@ class StoreCommandService:
         await self.stores.save(updated)
         return self._detail_payload(updated)
 
+    async def delete_store(self, store_id: UUID) -> None:
+        store = await self._get_existing_store(store_id)
+        if store.is_deleted:
+            return
+
+        await self.stores.save(replace(store, is_deleted=True, deleted_at=now_utc()))
+
+    async def restore_store(self, store_id: UUID) -> dict:
+        store = await self._get_existing_store(store_id)
+        if not store.is_deleted:
+            return self._detail_payload(store)
+
+        restored = replace(store, is_deleted=False, deleted_at=None)
+        await self.stores.save(restored)
+        return self._detail_payload(restored)
+
     def _normalize_domain(self, domain: str) -> str:
         normalized = domain.strip().lower()
         if not normalized:
             raise ValidationError("domain is required")
         return normalized
+
+    async def _get_existing_store(self, store_id: UUID) -> Store:
+        store = await self.stores.get(store_id)
+        if not store:
+            raise EntityDoesNotExistError("Store not found")
+        return store
 
     def _normalize_country_code(self, country_code: str) -> str:
         normalized = country_code.strip().upper()
@@ -181,9 +203,9 @@ class StoreCommandService:
 
         path = str(source.get("path") or "").strip()
         if not path:
-            raise ValidationError(f"Field '{field_name}' json_ld source requires path")
+            raise ValidationError(f"Field '{field_name}' {kind} source requires path")
         return {
-            "kind": "json_ld",
+            "kind": kind,
             "path": path,
             **({"regex": str(regex)} if regex is not None else {}),
             **({"normalizer": normalizer} if normalizer is not None else {}),

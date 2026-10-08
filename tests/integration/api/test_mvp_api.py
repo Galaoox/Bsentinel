@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from bsentinel.infrastructure.scraping.rules import build_default_buscalibre_rules
-
 
 def login_headers(client):
     response = client.post(
@@ -60,6 +58,16 @@ def test_protected_v1_endpoints_reject_anonymous_requests(client):
     assert response.json()["error"]["code"] == "AUTH_INVALID_TOKEN"
 
 
+def test_system_info_reports_supported_mvp_sites(client):
+    response = client.get("/api/v1/system/info", headers=login_headers(client))
+
+    assert response.status_code == 200
+    assert response.json()["supported_sites"] == [
+        "www.buscalibre.com.co",
+        "www.panamericana.com.co",
+    ]
+
+
 def test_create_book_and_list_flow(client):
     payload = {"url": "https://www.buscalibre.com.co/libro-el-principito-isbn-9780156012195"}
     headers = login_headers(client)
@@ -76,6 +84,22 @@ def test_create_book_and_list_flow(client):
     assert len(listed) == 1
     assert listed[0]["status"] == "activo"
     assert listed[0]["title"] == "Libro El Principito 9780156012195"
+
+
+def test_create_panamericana_book(client):
+    payload = {
+        "url": "https://www.panamericana.com.co/el-metal-perdido-isbn-9788410466456/p"
+    }
+
+    response = client.post(
+        "/api/v1/catalog/books",
+        json=payload,
+        headers=login_headers(client),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["site"] == "www.panamericana.com.co"
+    assert response.json()["isbn"] == "9788410466456"
 
 
 def test_create_duplicate_book_relation_returns_409(client):
@@ -101,52 +125,13 @@ def test_create_book_with_unsupported_store_returns_400(client):
     assert response.json()["error"]["code"] == "UNSUPPORTED_STORE"
 
 
-def test_store_admin_crud_and_catalog_for_new_domain(client):
+def test_store_endpoints_return_404_for_authenticated_clients(client):
     headers = login_headers(client)
-    create_store = client.post(
-        "/api/v1/stores",
-        json={
-            "name": "Demo Store",
-            "domain": "www.demo.com",
-            "country_code": "CO",
-            "scrape_interval_hours": 12,
-            "is_active": True,
-            "extraction_rules": build_default_buscalibre_rules(),
-        },
-        headers=headers,
-    )
-    assert create_store.status_code == 201
-    store_id = create_store.json()["id"]
+    get_response = client.get("/api/v1/stores", headers=headers)
+    post_response = client.post("/api/v1/stores", json={}, headers=headers)
 
-    listed = client.get("/api/v1/stores", headers=headers)
-    assert listed.status_code == 200
-    assert any(item["domain"] == "www.demo.com" for item in listed.json()["items"])
-
-    detail = client.get(f"/api/v1/stores/{store_id}", headers=headers)
-    assert detail.status_code == 200
-    assert detail.json()["domain"] == "www.demo.com"
-
-    patched = client.patch(
-        f"/api/v1/stores/{store_id}",
-        json={"scrape_interval_hours": 4, "is_active": True},
-        headers=headers,
-    )
-    assert patched.status_code == 200
-    assert patched.json()["scrape_interval_hours"] == 4
-
-    create_book = client.post(
-        "/api/v1/catalog/books",
-        json={"url": "https://www.demo.com/libro-demo-isbn-9780321146533"},
-        headers=headers,
-    )
-    assert create_book.status_code == 201
-    assert create_book.json()["site"] == "www.demo.com"
-
-
-def test_store_endpoints_require_admin_authentication(client):
-    response = client.get("/api/v1/stores")
-    assert response.status_code == 401
-    assert response.json()["error"]["code"] == "AUTH_INVALID_TOKEN"
+    assert get_response.status_code == 404
+    assert post_response.status_code == 404
 
 
 def test_delete_and_restore_book(client):

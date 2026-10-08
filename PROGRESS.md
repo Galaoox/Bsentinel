@@ -112,4 +112,4 @@ Notas:
 
 - Guía rápida de ejecución: `QUICKSTART.md`
 - Documentación principal: `Readme.md`
-- Historial de sesiones: `context.md`
+- Continuidad de sesiones: Engram (memoria persistente operativa, fuera del repo)

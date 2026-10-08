@@ -7,48 +7,33 @@ This guide starts the current MVP locally with PostgreSQL, Alembic migrations, a
 1. Python 3.12+
 2. `uv`
 3. Docker and Docker Compose
-4. Chromium runtime for Playwright/Scrapling (`make browsers-install`)
+4. Chromium runtime only if using `SCRAPING_RUNTIME=browser` (`make browsers-install`)
 
 ## 1. Create local environment file
 
-The application loads environment variables from `secrets/.env`.
+The application loads environment variables from `secrets/.env`. Copy the example on first setup:
 
 ```bash
-mkdir -p secrets
-cat > secrets/.env <<'ENV'
-APP_ENVIRONMENT=local
-PORT=8000
-LOG_LEVEL=INFO
-
-PERSISTENCE_BACKEND=sql
-DATABASE_URL=postgresql+asyncpg://bsentinel:bsentinel@localhost:5432/bsentinel
-DATABASE_POOL_SIZE=5
-DATABASE_MAX_OVERFLOW=10
-
-AUTH_ADMIN_USERNAME=admin
-AUTH_ADMIN_PASSWORD=changeme
-JWT_SECRET_KEY=change-me-in-production-32-bytes
-JWT_ALGORITHM=HS256
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
-JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
-
-SCRAPING_DELAY=2.0
-SCRAPING_TIMEOUT=30
-SCRAPING_MAX_RETRIES=3
-SCRAPING_BROWSER_ENABLED=true
-SCRAPING_BROWSER_HEADLESS=true
-SCRAPING_BROWSER_TIMEOUT_MS=45000
-SCRAPING_BROWSER_MAX_PAGES=3
-SCRAPING_BROWSER_DISABLE_RESOURCES=true
-SCRAPING_BROWSER_NETWORK_IDLE=true
-SCRAPING_BROWSER_SOLVE_CLOUDFLARE=false
-SCRAPING_BROWSER_REAL_CHROME=false
-SCHEDULER_SCRAPE_INTERVAL_HOURS=6
-
-OPENLIBRARY_API_URL=https://openlibrary.org
-OPENLIBRARY_RATE_LIMIT=1.0
-ENV
+cp secrets/.env.example secrets/.env
 ```
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item secrets/.env.example secrets/.env
+```
+
+If `secrets/.env` already exists, add the missing variables from the example to that file.
+The example includes local database and authentication defaults, HTTP/browser options,
+and scheduler settings. For a proxy, uncomment `SCRAPING_HTTP_PROXY` in `secrets/.env`
+and replace the sample URL with your provider's endpoint and credentials:
+
+```dotenv
+SCRAPING_RUNTIME=http
+SCRAPING_HTTP_PROXY=http://usuario:contrasena@host:puerto
+```
+
+Omit `SCRAPING_HTTP_PROXY` to connect directly. This variable applies only to the HTTP runtime.
 
 ## 2. Install dependencies
 
@@ -56,11 +41,14 @@ ENV
 make install
 ```
 
-## 3. Install Chromium for Scrapling
+## 3. Install Chromium if using the browser runtime
 
 ```bash
 make browsers-install
 ```
+
+Skip this step with `SCRAPING_RUNTIME=http`. To use Chromium, explicitly set
+`SCRAPING_RUNTIME=browser`; the application does not switch to it automatically on HTTP failures.
 
 ## 4. Start PostgreSQL
 
@@ -92,6 +80,26 @@ Fallback without `uv`:
 - Health: `http://localhost:8000/health`
 - Swagger: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
+
+### Alternative: run the API and database with Docker Compose
+
+After creating `secrets/.env` in step 1, run from the repository root:
+
+```bash
+docker compose build --pull bsentinel
+docker compose up -d postgres
+docker compose run --rm bsentinel alembic upgrade head
+docker compose up -d bsentinel
+```
+
+Compose sets `DATABASE_URL` to use the `postgres` service inside the Docker network.
+Keep `localhost` in `secrets/.env` for running the API directly on the host.
+The image uses Python 3.12 on Debian Bookworm and installs dependencies from `uv.lock`.
+It includes the default HTTP scraping runtime; Chromium must be installed separately
+if you select the browser runtime.
+
+If a build fails, capture the complete output with
+`docker compose --progress plain build --pull bsentinel`.
 
 ## 8. Authenticate in Swagger
 
@@ -169,6 +177,15 @@ Run:
 make browsers-install
 ```
 
+### HTTP proxy runtime
+
+If you use the default HTTP runtime with a proxy, verify at least:
+
+- `SCRAPING_RUNTIME=http`
+- `SCRAPING_HTTP_PROXY=http://user:pass@host:port`
+
+If the proxy URL includes credentials, the application redacts them in observable logs and error payloads.
+
 ### Invalid admin credentials
 
 Verify `AUTH_ADMIN_USERNAME` and `AUTH_ADMIN_PASSWORD` in `secrets/.env`.
@@ -182,4 +199,3 @@ Verify `JWT_SECRET_KEY`, `JWT_ALGORITHM`, and token expiration values in `secret
 - `Readme.md`
 - `PROGRESS.md`
 - `docs/README.md`
-- `context.md`

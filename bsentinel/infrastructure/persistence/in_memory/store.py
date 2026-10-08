@@ -5,7 +5,10 @@ from __future__ import annotations
 from uuid import UUID
 
 from bsentinel.domain.models import ArchiveJob, Book, BookStoreRelation, PriceHistoryRecord, Store
-from bsentinel.infrastructure.scraping.rules import build_default_buscalibre_rules
+from bsentinel.infrastructure.scraping.rules import (
+    build_default_buscalibre_rules,
+    build_default_panamericana_rules,
+)
 
 
 class InMemoryStore:
@@ -22,5 +25,12 @@ class InMemoryStore:
         self._seed_store()
 
     def _seed_store(self) -> None:
-        store = Store(extraction_rules=build_default_buscalibre_rules())
-        self.stores[store.id] = store
+        stores = [
+            Store(extraction_rules=build_default_buscalibre_rules()),
+            Store(
+                name="Panamericana",
+                domain="www.panamericana.com.co",
+                extraction_rules=build_default_panamericana_rules(),
+            ),
+        ]
+        self.stores.update((store.id, store) for store in stores)
