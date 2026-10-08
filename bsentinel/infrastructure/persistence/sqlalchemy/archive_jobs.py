@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 from datetime import timedelta
 from uuid import UUID
 
+from bsentinel.domain.dates import as_utc
 from bsentinel.domain.models import ArchiveJob, now_utc
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,11 +59,11 @@ class SQLArchiveJobRepository:
 
             to_move: list[PriceHistoryModel] = []
             for rows in by_book.values():
-                rows.sort(key=lambda r: r.checked_at, reverse=True)
+                rows.sort(key=lambda r: (as_utc(r.checked_at), r.id), reverse=True)
                 keep = rows[:min_active_records_per_book]
                 keep_ids = {item.id for item in keep}
                 for row in rows[min_active_records_per_book:]:
-                    if row.checked_at < cutoff and row.id not in keep_ids:
+                    if as_utc(row.checked_at) < cutoff and row.id not in keep_ids:
                         to_move.append(row)
 
             for row in to_move:
@@ -87,13 +87,10 @@ class SQLArchiveJobRepository:
 
             job_model.moved_records = len(to_move)
             job_model.status = "completed"
-        except Exception as exc:  # pragma: no cover
-            errors = json.loads(job_model.errors)
-            errors.append(str(exc))
-            job_model.errors = json.dumps(errors)
-            job_model.status = "failed"
-        finally:
             job_model.finished_at = now_utc()
             await self.session.flush()
+        except Exception:
+            await self.session.rollback()
+            raise
 
         return to_archive_job(job_model)

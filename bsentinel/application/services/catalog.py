@@ -14,6 +14,7 @@ from bsentinel.application.ports import (
     ScraperPort,
     StoreRepositoryPort,
 )
+from bsentinel.domain.isbn import normalize_isbn
 from bsentinel.domain.models import Book, BookStoreRelation
 from bsentinel.exceptions import (
     EntityAlreadyExistsError,
@@ -58,9 +59,9 @@ class CatalogCommandService:
             raise UnsupportedStoreError("Unsupported store")
 
         details = await self.scraper.extract_book_details(store, product_url)
-        isbn = (details.isbn or "").strip()
+        isbn = normalize_isbn(details.isbn)
         if not isbn:
-            raise ValidationError("ISBN is required to register a book")
+            raise ValidationError("A valid ISBN is required to register a book")
 
         book = await self.books.get_by_isbn(isbn)
         if not book:
@@ -132,23 +133,10 @@ class CatalogQueryService:
         page: int,
         limit: int,
     ) -> dict:
-        books = await self.books.list(include_deleted=include_deleted)
-
-        if q:
-            term = q.lower()
-            books = [b for b in books if term in b.title.lower()]
-        if isbn:
-            books = [b for b in books if b.isbn == isbn]
-        if author:
-            term = author.lower()
-            books = [b for b in books if any(term in a.lower() for a in b.authors)]
-        if category:
-            term = category.lower()
-            books = [b for b in books if any(term in c.lower() for c in b.categories)]
-
-        total = len(books)
-        start = (page - 1) * limit
-        paginated = books[start : start + limit]
+        paginated, total = await self.books.list_page(
+            include_deleted=include_deleted, q=q, isbn=isbn, author=author,
+            category=category, page=page, limit=limit,
+        )
 
         items = []
         for book in paginated:

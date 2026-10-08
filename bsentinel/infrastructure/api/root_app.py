@@ -60,6 +60,7 @@ from bsentinel.infrastructure.persistence.sqlalchemy import (
     SQLStoreRepository,
     session_scope,
 )
+from bsentinel.infrastructure.persistence.sqlalchemy.session import get_session_factory
 from bsentinel.infrastructure.persistence.sqlalchemy.transactions import SQLCatalogTransaction
 from bsentinel.infrastructure.scheduler import LocalScheduler
 from bsentinel.infrastructure.scraping import ConfiguredStoreScraper, build_scraping_runtime
@@ -100,13 +101,6 @@ catalog_query_service = CatalogQueryService(
     books=book_repository,
     stores=store_repository,
     relations=relation_repository,
-)
-scraping_service = ScrapingService(
-    books=book_repository,
-    stores=store_repository,
-    relations=relation_repository,
-    history=history_repository,
-    scraper=scraper_client,
 )
 pricing_query_service = PricingQueryService(
     books=book_repository,
@@ -232,15 +226,6 @@ async def get_catalog_query_service(
     return _build_sql_services(session)["catalog_query"]
 
 
-async def get_scraping_service(
-    session: AsyncSession | None = Depends(get_optional_session),
-) -> ScrapingService:
-    if settings.persistence_backend == "in_memory":
-        return scraping_service
-    assert session is not None
-    return _build_sql_services(session)["scraping"]
-
-
 async def get_pricing_service(
     session: AsyncSession | None = Depends(get_optional_session),
 ) -> PricingQueryService:
@@ -270,13 +255,47 @@ async def get_auth_service(
 
 async def run_scraping_batch() -> int:
     if settings.persistence_backend == "in_memory":
-        return await scraping_service.scrape_all_active()
+        candidates = await relation_repository.list_all()
+        updated = 0
+        for candidate in candidates:
+            service = await get_catalog_bulk_service(None)
+            try:
+                async with service.transaction:
+                    relations = await service.scraping.relations.list_for_book(candidate.book_id)
+                    relation = next((item for item in relations if item.id == candidate.id), None)
+                    confirmed = relation is not None and await service.scraping.scrape_active_relation(relation)
+            except ScrapingService.recoverable_errors as exc:
+                _log_batch_skip(candidate, exc)
+                continue
+            updated += int(confirmed)
+        return updated
 
+    factory = get_session_factory()
+    async with factory() as session:
+        candidates = await SQLRelationRepository(session).list_all()
     updated = 0
-    async for session in session_scope():
-        services = _build_sql_services(session)
-        updated = await services["scraping"].scrape_all_active()
+    for candidate in candidates:
+        try:
+            async with factory.begin() as session:
+                services = _build_sql_services(session)
+                relations = await services["scraping"].relations.list_for_book(candidate.book_id)
+                relation = next((item for item in relations if item.id == candidate.id), None)
+                confirmed = relation is not None and await services["scraping"].scrape_active_relation(relation)
+        except ScrapingService.recoverable_errors as exc:
+            _log_batch_skip(candidate, exc)
+            continue
+        updated += int(confirmed)
     return updated
+
+
+def _log_batch_skip(relation, exc) -> None:
+    logger.warning("Batch relation skipped", extra=sanitize_proxy_observable({
+        "book_id": str(relation.book_id), "relation_id": str(relation.id),
+        "store_id": str(relation.store_id), "error_type": type(exc).__name__,
+        "error_message": str(exc),
+        "scraping_reason": getattr(exc, "reason", None),
+        "scraping_diagnostics": getattr(exc, "diagnostics", {}),
+    }))
 
 
 scheduler = LocalScheduler(run_scraping_batch)
@@ -503,7 +522,6 @@ root_app.include_router(
         get_system_service,
         get_catalog_command_service,
         get_catalog_query_service,
-        get_scraping_service,
         get_pricing_service,
         get_retention_service,
         get_auth_service,

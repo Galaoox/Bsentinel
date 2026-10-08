@@ -38,7 +38,7 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 - Un mismo libro puede tener múltiples relaciones `book-store`, cada una con su `product_url`, precio actual e historial de precios.
 - La URL del producto ya no pertenece a `Book`; pertenece solo a `BookStoreRelation`.
 - Si intentas registrar de nuevo el mismo libro para la misma tienda, la API responde `ENTITY_ALREADY_EXISTS`.
-- El scraping y la extracción ya no dependen de lógica fija de Buscalibre; usan `Store.extraction_rules` persistidas y un navegador compartido con Scrapling `AsyncStealthySession`.
+- El scraping y la extracción ya no dependen de lógica fija de Buscalibre; usan `Store.extraction_rules` persistidas y el runtime HTTP de Scrapling por defecto; Chromium se selecciona con `SCRAPING_RUNTIME=browser`.
 
 ## Alcance MVP de Sitios 🏪
 
@@ -66,6 +66,46 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 
 Nota de contrato de errores v1:
 - Respuesta estándar: `error.code`, `error.message`, `error.details` y `request_id`.
+
+## Identidad, transacciones y consultas
+
+El ISBN se normaliza quitando espacios y guiones, convirtiendo `x` a `X` y validando
+el checksum ISBN-10 o ISBN-13. Ambos formatos conservan identidades distintas.
+Un ISBN faltante, inválido o extraído como fragmento de un número mayor devuelve
+`400 VALIDATION_ERROR` sin escrituras. Las fuentes de extracción pueden usar fallbacks.
+
+El alta individual confirma libro, relación, precio e historial en una sola
+transacción antes de devolver `201`. Un fallo de scraping, flush o commit revierte
+el alta; su respuesta conserva el formato individual, sin índice ni URL del lote.
+
+El batch del scheduler toma candidatos y abre una transacción por relación,
+revalidando que el libro siga vigente. Fallos de scraping y tiendas ausentes,
+inactivas o eliminadas se registran con IDs y diagnóstico sanitizado y el batch
+continúa. Errores de base de datos o inesperados detienen el batch conservando los
+éxitos ya confirmados; solo se cuentan confirmaciones. SQL usa sesiones separadas
+y memoria publica cada relación mediante una copia aislada.
+
+Catálogo e historial aplican filtros y conteo antes de paginar. El orden es
+`created_at DESC, id DESC` para libros y `checked_at DESC, id DESC` para historial;
+`%` y `_` en búsquedas de texto son literales. Historial `source=all` combina ambas
+tablas antes de ordenar y paginar. Las fechas sin zona de SQLite representan UTC.
+
+El archivado responde con `id` (usarlo en el path `{job_id}`). Conserva los últimos
+N registros por libro y archiva los restantes anteriores al corte. SQL mueve filas
+de `price_history` a `price_history_archive` preservando IDs en una transacción;
+memoria cambia la marca `archived`.
+
+### Migración parcial de ISBN
+
+Antes de `make migrate`, crea y verifica un backup restaurable de la base.
+La revisión `0007_normalize_isbn`, posterior a `0006`, inspecciona también libros
+eliminados. Solo normaliza grupos válidos de un único libro. Conserva intactos
+todos los miembros de grupos conflictivos, incluidos los ya normalizados, y los
+ISBN inválidos, nulos o vacíos. Reporta cantidades, IDs y motivos en el log Alembic.
+No fusiona, borra ni reasigna relaciones y no agrega unicidad al índice ISBN.
+Solo actualiza patrones ISBN predeterminados conocidos; conserva reglas custom.
+Los conflictos requieren revisión manual antes de registrar la misma identidad.
+El downgrade no reconstruye formatos previos: para recuperarlos restaura el backup.
 
 ## Alta masiva de libros
 

@@ -13,10 +13,12 @@ from bsentinel.application.ports import (
     StoreRepositoryPort,
 )
 from bsentinel.domain.models import BookStoreRelation, PriceHistoryRecord
-from bsentinel.exceptions import EntityDoesNotExistError, UnsupportedStoreError
+from bsentinel.exceptions import EntityDoesNotExistError, ScrapingError, UnsupportedStoreError
 
 
 class ScrapingService:
+    recoverable_errors = (ScrapingError, UnsupportedStoreError)
+
     def __init__(
         self,
         *,
@@ -34,8 +36,12 @@ class ScrapingService:
 
     async def scrape_relation(self, relation: BookStoreRelation) -> None:
         store = await self.stores.get(relation.store_id)
-        if not store or not store.is_active:
-            raise UnsupportedStoreError("Unsupported store")
+        if not store:
+            raise UnsupportedStoreError("Store not found")
+        if store.is_deleted:
+            raise UnsupportedStoreError("Store is deleted")
+        if not store.is_active:
+            raise UnsupportedStoreError("Store is inactive")
 
         result = await self.scraper.scrape_book(store, relation.product_url)
         relation.current_price = result.price
@@ -53,14 +59,12 @@ class ScrapingService:
         )
         await self.history.add(record)
 
-    async def scrape_all_active(self) -> int:
-        total = 0
-        for relation in await self.relations.list_all():
-            book = await self.books.get(relation.book_id)
-            if book and not book.is_deleted:
-                await self.scrape_relation(relation)
-                total += 1
-        return total
+    async def scrape_active_relation(self, relation: BookStoreRelation) -> bool:
+        book = await self.books.get(relation.book_id)
+        if not book or book.is_deleted:
+            return False
+        await self.scrape_relation(relation)
+        return True
 
 
 class PricingQueryService:
@@ -91,16 +95,13 @@ class PricingQueryService:
         if not await self.books.get(book_id):
             raise EntityDoesNotExistError("Book not found")
 
-        records = await self.history.list(
+        paginated, total = await self.history.list_page(
             book_id=book_id,
             source=source,
             state=state,
             start_date=start_date,
-            end_date=end_date,
+            end_date=end_date, page=page, limit=limit,
         )
-        total = len(records)
-        start = (page - 1) * limit
-        paginated = records[start : start + limit]
 
         output = []
         for record in paginated:

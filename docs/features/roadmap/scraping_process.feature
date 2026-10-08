@@ -6,14 +6,15 @@ Feature: Proceso de scraping configurado
 
   Background:
     Given que el scraper usa reglas de extracción configuradas por tienda
-    And que la sesión de navegador debe estar inicializada para hacer fetch
+    And que el runtime HTTP o browser seleccionado debe estar inicializado para hacer fetch
 
   Scenario: Extraer los datos base de un libro al registrarlo
     Given que la tienda soportada tiene reglas para "title", "authors" e "isbn"
     When el sistema procesa una URL de producto para crear el libro
     Then hace fetch de la página del producto
-And intenta extraer datos desde fuentes "css", "json_ld" y/o "vtex_property"
-    And exige título, autores e ISBN utilizables para completar el alta
+    And intenta extraer datos desde fuentes "css", "json_ld" y/o "vtex_property"
+    And el extractor exige título y autores; puede devolver ISBN nulo
+    And el catálogo exige ISBN-10/13 con checksum válido para completar el alta
 
   Scenario: Ejecutar scraping inmediato después de crear una relación
     Given que una nueva relación libro-tienda fue creada correctamente
@@ -45,11 +46,15 @@ And intenta extraer datos desde fuentes "css", "json_ld" y/o "vtex_property"
     Given que existen relaciones libro-tienda registradas
     When corre el batch de scraping del scheduler
     Then se procesan únicamente relaciones cuyos libros no están eliminados lógicamente
-    And cada relación reutiliza el mismo flujo de scraping individual
+    And cada relación confirma precio e historial en su propia transacción
+    And revalida que el libro siga vigente antes de escribir
+    And los fallos de scraping o tienda ausente, inactiva o eliminada se registran sanitizados y permiten continuar
+    And un fallo SQL o inesperado detiene el batch conservando los éxitos previos
+    And el conteo solo incluye relaciones confirmadas
 
   Rule: Contrato observable actual
-    - La implementación actual usa una sesión de navegador stealth compartida, no un cliente HTTP simple por tienda.
-- Las reglas soportan sources "css", "json_ld" y "vtex_property" con normalizers configurables.
+    - La implementación actual usa HTTP por defecto; browser se selecciona explícitamente, sin fallback automático.
+    - Las reglas soportan sources "css", "json_ld" y "vtex_property" con normalizers configurables.
     - El proceso batch existe en la aplicación, pero no tiene endpoint público propio en la API v1.
 
   Rule: Fuera de alcance actual

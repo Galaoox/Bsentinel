@@ -11,11 +11,12 @@ from datetime import UTC, datetime
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
+from bsentinel.domain.isbn import normalize_isbn
 from bsentinel.domain.models import ACTIVE, UNKNOWN, Store
 from bsentinel.exceptions import ScrapingError
 
 OUT_OF_STOCK = "agotado"
-ISBN_PATTERN = re.compile(r"(97[89]\d{10}|\d{9}[\dXx])")
+ISBN_PATTERN = re.compile(r"(?<![0-9Xx])([0-9][0-9Xx\s-]*[0-9Xx])(?![0-9Xx])")
 PRICE_TOKEN_PATTERN = re.compile(r"(?:\$|COP\$?|COP)?\s*([\d.,]+)")
 COP_THOUSANDS_PATTERN = re.compile(r"^\d{1,3}(?:\.\d{3})+(?:,\d{2})?$")
 COMMA_THOUSANDS_PATTERN = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d{2})?$")
@@ -80,7 +81,7 @@ class ConfiguredStoreScraper:
 
         title, title_attempts = self._extract_text_field_with_attempts(store, "title", page, product)
         authors, author_attempts = self._extract_list_field_with_attempts(store, "authors", page, product)
-        isbn, isbn_attempts = self._extract_text_field_with_attempts(store, "isbn", page, product)
+        isbn, _ = self._extract_text_field_with_attempts(store, "isbn", page, product)
 
         if not title:
             raise self._build_extraction_error(
@@ -98,15 +99,6 @@ class ConfiguredStoreScraper:
                 attempts=author_attempts,
                 product=product,
             )
-        if not isbn:
-            raise self._build_extraction_error(
-                store=store,
-                product_url=product_url,
-                field_name="isbn",
-                attempts=isbn_attempts,
-                product=product,
-            )
-
         return ExtractedBookDetails(title=title, authors=authors, isbn=isbn)
 
     async def scrape_book(self, store: Store, product_url: str) -> ScrapeResult:
@@ -498,14 +490,26 @@ class ConfiguredStoreScraper:
 
         regex = source.get("regex")
         if not regex:
+            if source.get("normalizer") == "isbn_digits":
+                return [isbn for value in raw_values
+                        for match in ISBN_PATTERN.finditer(str(value))
+                        if (isbn := normalize_isbn(match.group(1))) is not None]
             return raw_values
 
         pattern = re.compile(regex)
         matched: list[str] = []
         for value in raw_values:
-            match = pattern.search(str(value))
-            if match:
-                matched.append(match.group(1) if match.groups() else match.group(0))
+            text = str(value)
+            for match in pattern.finditer(text):
+                group = 1 if match.groups() else 0
+                if source.get("normalizer") == "isbn_digits":
+                    start, end = match.span(group)
+                    # A custom capture may not turn a longer invalid token into an ISBN.
+                    if any(token.start(1) < end and start < token.end(1)
+                           and normalize_isbn(token.group(1)) is None
+                           for token in ISBN_PATTERN.finditer(text)):
+                        continue
+                matched.append(match.group(group))
         return matched
 
     def _extract_css_values(self, selector: Any, source: dict[str, Any]) -> list[str]:
@@ -606,8 +610,7 @@ class ConfiguredStoreScraper:
             text = str(value).strip()
             return text or None
         if normalizer == "isbn_digits":
-            match = ISBN_PATTERN.search(str(value))
-            return match.group(1).upper() if match else None
+            return normalize_isbn(str(value))
         if normalizer == "price_decimal":
             return self._parse_price_decimal(value)
         if normalizer == "price_cop":

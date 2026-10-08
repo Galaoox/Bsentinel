@@ -74,7 +74,6 @@ def client(monkeypatch, tmp_path):
 
     monkeypatch.setenv("PERSISTENCE_BACKEND", "sql")
     monkeypatch.setenv("DATABASE_URL", _build_test_db_url(db_path))
-    monkeypatch.setenv("SCRAPING_BROWSER_ENABLED", "false")
 
     bsentinel_pkg = importlib.import_module("bsentinel")
     settings_module = importlib.import_module("bsentinel._settings")

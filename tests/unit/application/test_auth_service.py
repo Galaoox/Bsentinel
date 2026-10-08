@@ -1,7 +1,13 @@
+from datetime import timedelta
+
 import pytest
 
 from bsentinel.application.services.auth import AuthService
-from bsentinel.exceptions import InvalidCredentialsError, RefreshTokenRevokedError
+from bsentinel.exceptions import (
+    InvalidCredentialsError,
+    InvalidTokenError,
+    RefreshTokenRevokedError,
+)
 from bsentinel.infrastructure.persistence.in_memory import (
     InMemoryRefreshTokenRepository,
     InMemoryStore,
@@ -47,3 +53,19 @@ async def test_refresh_revokes_previous_refresh_token(auth_service):
         await auth_service.refresh(tokens["refresh_token"])
 
     assert rotated["refresh_token"] != tokens["refresh_token"]
+
+
+async def test_unicode_credentials_and_token_guards(auth_service):
+    for username, password in [('á', 'changeme'), ('admin', 'contraseña')]:
+        with pytest.raises(InvalidCredentialsError):
+            await auth_service.login(username, password)
+    auth_service.admin_username = '管理者'
+    auth_service.admin_password = 'contraseña🔑'
+    tokens = await auth_service.login('管理者', 'contraseña🔑')
+    assert (await auth_service.authenticate_access_token(tokens['access_token'])).username == '管理者'
+    with pytest.raises(InvalidTokenError):
+        await auth_service.authenticate_access_token(tokens['refresh_token'])
+    expired = auth_service.token_manager.issue_token(
+        subject='管理者', role='admin', token_type='access', expires_delta=timedelta(seconds=-1))
+    with pytest.raises(InvalidTokenError):
+        await auth_service.authenticate_access_token(expired['token'])
