@@ -2,6 +2,7 @@
 
 from .auth import AuthService
 from .catalog import CatalogCommandService, CatalogQueryService
+from .catalog_bulk import CatalogBulkService
 from .pricing import PricingQueryService, ScrapingService
 from .retention import RetentionService
 from .stores import StoreCommandService, StoreQueryService
@@ -9,6 +10,7 @@ from .system import SystemQueryService
 
 __all__ = [
     "AuthService",
+    "CatalogBulkService",
     "CatalogCommandService",
     "CatalogQueryService",
     "PricingQueryService",

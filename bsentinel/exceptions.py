@@ -82,5 +82,15 @@ class ForbiddenError(StandardError):
     code = "AUTH_FORBIDDEN"
 
 
+class BulkItemError(StandardError):
+    """Business failure with its original cause and input position."""
+
+    def __init__(self, cause: StandardError, index: int, url: str) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.index = index
+        self.url = url
+
+
 # Backward-compatible alias kept during migration.
 StandardException = StandardError

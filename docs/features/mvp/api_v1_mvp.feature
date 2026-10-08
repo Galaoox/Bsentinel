@@ -30,6 +30,25 @@ Feature: API v1 MVP endpoints
     And la respuesta incluye "site"
     And la respuesta incluye "status"
 
+  Scenario: Crear un lote atómico conservando el orden
+    Given dos URL soportadas con el mismo ISBN en tiendas diferentes
+    When envío una petición POST autenticada a "/api/v1/catalog/books/bulk" con "urls"
+    Then recibo estado 201 después del commit
+    And "items" conserva el orden con índices base cero
+    And "meta.total" es 2 y existe un libro con dos relaciones y dos historiales
+
+  Scenario: Fallo en el segundo item revierte el lote completo
+    Given una primera URL válida y una segunda URL con fallo de scraping
+    When envío una petición POST autenticada a "/api/v1/catalog/books/bulk" con "urls"
+    Then recibo estado 400 con "error.details.index" igual a 1 y URL sanitizada
+    And no quedan libros, relaciones ni historiales nuevos del lote
+
+  Scenario: Duplicado de relación aborta el lote
+    Given dos URL distintas del mismo ISBN y la misma tienda
+    When envío una petición POST autenticada a "/api/v1/catalog/books/bulk" con "urls"
+    Then recibo estado 409 con "error.code" igual a "ENTITY_ALREADY_EXISTS"
+    And no se persiste ningún item del lote
+
   Scenario: Listar libros
     Given que existe al menos un libro registrado
     When envío una petición GET autenticada a "/api/v1/catalog/books"

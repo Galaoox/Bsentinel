@@ -9,11 +9,13 @@ from .repositories import (
     RelationRepositoryPort,
     StoreRepositoryPort,
 )
+from .transactions import CatalogTransactionPort
 
 __all__ = [
     "ArchiveJobRepositoryPort",
     "BookDetailsPort",
     "BookRepositoryPort",
+    "CatalogTransactionPort",
     "HistoryRepositoryPort",
     "MetadataProviderPort",
     "RefreshTokenRepositoryPort",

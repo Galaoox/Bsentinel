@@ -54,6 +54,7 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/system/info`
 - `POST /api/v1/catalog/books`
+- `POST /api/v1/catalog/books/bulk`
 - `GET /api/v1/catalog/books`
 - `GET /api/v1/catalog/books/{book_id}`
 - `DELETE /api/v1/catalog/books/{book_id}`
@@ -65,6 +66,61 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 
 Nota de contrato de errores v1:
 - Respuesta estándar: `error.code`, `error.message`, `error.details` y `request_id`.
+
+## Alta masiva de libros
+
+`POST /api/v1/catalog/books/bulk` requiere JWT y recibe `{"urls": ["URL", "URL"]}`.
+Acepta **1 a 20 strings estrictos**, hasta **2048 caracteres** por URL; rechaza
+URL repetidas exactamente, listas vacías, exceso de tamaño y tipos incorrectos
+con `422`, antes de scraping. URL inválida, tienda no soportada/inactiva, ISBN
+faltante o scraping fallido producen `400`; relación libro-tienda existente,
+`409`. Las tiendas permitidas son las mismas del alta individual.
+
+```bash
+curl --request POST "${API_BASE_URL}/api/v1/catalog/books/bulk" \
+  --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+  --header 'Content-Type: application/json' \
+  --data '{"urls":["https://www.buscalibre.com.co/libro-ejemplo-isbn-9780134494166","https://www.panamericana.com.co/libro-ejemplo-isbn-9780134494166/p"]}'
+```
+
+URL ilustrativas, no productos reales verificados. Éxito: `201 Created` **después
+del commit**, `items` en orden de entrada y `meta.total` igual al número de URL:
+
+```json
+{
+  "items": [
+    {"index": 0, "url": "URL de entrada", "book_id": "UUID", "relation_id": "UUID", "isbn": "9780134494166", "title": "Ejemplo", "authors": ["Autor"], "site": "www.buscalibre.com.co", "status": "activo"}
+  ],
+  "meta": {"total": 1}
+}
+```
+
+Cada item inicializa precio e historial. El mismo ISBN en dos tiendas reutiliza
+un libro y crea dos relaciones: `meta.total` cuenta relaciones, no libros únicos.
+No se enriquecen de nuevo libros existentes ni se restauran libros borrados.
+
+La operación es síncrona, secuencial, **todo o nada y fail-fast**. Un fallo revierte
+libros, relaciones e historiales del lote. Los errores por item conservan el
+contrato habitual y añaden índice base cero y URL sanitizada:
+
+```json
+{"error":{"code":"ENTITY_ALREADY_EXISTS","message":"Book-store relation already exists","details":{"index":1,"url":"URL causante"}},"request_id":"UUID"}
+```
+
+Errores inesperados de infraestructura/flush/commit devuelven `500` genérico, no
+`201`; incluyen `request_id` y `X-Request-ID`. En SQL el lote toma posesión de la
+transacción ya abierta por la petición/auth, hace flush por item y confirma antes
+de responder; la dependencia de sesión no repite ese commit. En memoria trabaja
+sobre una copia aislada y publica sin puntos de suspensión solo al éxito. Si
+cambia el catálogo compartido durante el lote, aborta con `500` sin sobrescribir
+al escritor concurrente (reintentar). Memoria es process-local, no thread-safe.
+
+Límites: el índice ISBN SQL **no es único**, por lo que sigue existiendo una carrera
+entre peticiones concurrentes; no se garantiza deduplicación global ni se migran
+datos con esta operación. El rollback no deshace llamadas externas. No hay claves
+de idempotencia: reintentar un lote confirmado tras perder la respuesta puede
+devolver `409`. El límite de 20 no es un benchmark; no subirlo sin medir latencias
+y timeouts reales o cambiar a jobs persistentes.
 
 ## Autenticación 🔐
 

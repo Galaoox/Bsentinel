@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -26,8 +27,10 @@ from bsentinel.application.services import (
     ScrapingService,
     SystemQueryService,
 )
+from bsentinel.application.services.catalog_bulk import CatalogBulkService
 from bsentinel.exceptions import (
     AuthenticationError,
+    BulkItemError,
     EntityAlreadyExistsError,
     EntityDoesNotExistError,
     ForbiddenError,
@@ -47,6 +50,7 @@ from bsentinel.infrastructure.persistence.in_memory import (
     InMemoryStore,
     InMemoryStoreRepository,
 )
+from bsentinel.infrastructure.persistence.in_memory.transactions import InMemoryCatalogTransaction
 from bsentinel.infrastructure.persistence.sqlalchemy import (
     SQLArchiveJobRepository,
     SQLBookRepository,
@@ -56,6 +60,7 @@ from bsentinel.infrastructure.persistence.sqlalchemy import (
     SQLStoreRepository,
     session_scope,
 )
+from bsentinel.infrastructure.persistence.sqlalchemy.transactions import SQLCatalogTransaction
 from bsentinel.infrastructure.scheduler import LocalScheduler
 from bsentinel.infrastructure.scraping import ConfiguredStoreScraper, build_scraping_runtime
 from bsentinel.infrastructure.scraping.sanitization import sanitize_proxy_observable
@@ -199,6 +204,25 @@ async def get_catalog_command_service(
     return _build_sql_services(session)["catalog_command"]
 
 
+async def get_catalog_bulk_service(
+    session: AsyncSession | None = Depends(get_optional_session),
+) -> CatalogBulkService:
+    if settings.persistence_backend == "in_memory":
+        transaction = InMemoryCatalogTransaction(in_memory_store)
+        books = InMemoryBookRepository(transaction.working)
+        stores = InMemoryStoreRepository(transaction.working)
+        relations = InMemoryRelationRepository(transaction.working)
+        history = InMemoryHistoryRepository(transaction.working)
+        command = CatalogCommandService(books=books, stores=stores, relations=relations,
+                                        metadata=metadata_client, scraper=scraper_client)
+        scraping = ScrapingService(books=books, stores=stores, relations=relations,
+                                  history=history, scraper=scraper_client)
+        return CatalogBulkService(command, scraping, transaction)
+    assert session is not None
+    services = _build_sql_services(session)
+    return CatalogBulkService(services["catalog_command"], services["scraping"], SQLCatalogTransaction(session))
+
+
 async def get_catalog_query_service(
     session: AsyncSession | None = Depends(get_optional_session),
 ) -> CatalogQueryService:
@@ -310,6 +334,7 @@ def _error_response(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
+        headers={"X-Request-ID": str(getattr(request.state, "request_id", ""))},
         content={
             "error": {
                 "code": code,
@@ -338,6 +363,14 @@ async def add_request_id(request: Request, call_next):
 @root_app.exception_handler(StandardException)
 async def standard_exception_handler(request: Request, exc: StandardException):
     """Mapea excepciones de negocio a contrato de error API."""
+    if isinstance(exc, BulkItemError):
+        response = await standard_exception_handler(request, exc.cause)
+        content = json.loads(bytes(response.body))
+        content["error"]["details"].update({
+            "index": exc.index, "url": sanitize_proxy_observable(exc.url),
+        })
+        return JSONResponse(status_code=response.status_code,
+                            headers={"X-Request-ID": response.headers["X-Request-ID"]}, content=content)
     if isinstance(exc, ScrapingError):
         safe_message = str(sanitize_proxy_observable(str(exc)))
         safe_diagnostics = sanitize_proxy_observable(getattr(exc, "diagnostics", {}))
@@ -395,7 +428,14 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
         status_code=422,
         code="REQUEST_VALIDATION_ERROR",
         message="Request validation failed",
-        details={"errors": exc.errors()},
+        details={"errors": sanitize_proxy_observable([
+            {
+                **{key: value for key, value in error.items() if key != "input"},
+                **({"ctx": {key: str(value) for key, value in error["ctx"].items()}}
+                   if "ctx" in error else {}),
+            }
+            for error in exc.errors()
+        ])},
     )
 
 
@@ -467,5 +507,6 @@ root_app.include_router(
         get_pricing_service,
         get_retention_service,
         get_auth_service,
+        get_catalog_bulk_service,
     )
 )
