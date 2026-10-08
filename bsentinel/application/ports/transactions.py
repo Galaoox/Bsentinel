@@ -1,0 +1,12 @@
+"""Atomic persistence boundary for bulk catalog operations."""
+from types import TracebackType
+from typing import Protocol, Self
+
+
+class CatalogTransactionPort(Protocol):
+    async def __aenter__(self) -> Self: ...
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None: ...
+    async def flush(self) -> None: ...

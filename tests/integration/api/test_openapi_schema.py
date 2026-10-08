@@ -44,3 +44,10 @@ def test_openapi_protected_operations_declare_bearer_security(client):
     assert scheme["type"] == "oauth2"
     assert scheme["flows"]["password"]["tokenUrl"] == "/api/v1/auth/login"
     assert payload["paths"]["/api/v1/catalog/books"]["get"]["security"] == [{"OAuth2PasswordBearer": []}]
+
+
+def test_openapi_bulk_contract(client):
+    spec = client.get("/openapi.json").json()["paths"]["/api/v1/catalog/books/bulk"]["post"]
+    assert spec["security"] == [{"OAuth2PasswordBearer": []}]
+    assert set(spec["responses"]) == {"201", "400", "401", "409", "422", "500"}
+    assert spec["responses"]["201"]["content"]["application/json"]["schema"]["$ref"].endswith("/CreateBooksBulkResponse")

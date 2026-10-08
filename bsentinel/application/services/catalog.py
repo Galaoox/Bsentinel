@@ -42,7 +42,10 @@ class CatalogCommandService:
         self.scraper = scraper
 
     async def create_book_from_url(self, product_url: str) -> tuple[Book, BookStoreRelation, str]:
-        parsed = urlparse(product_url)
+        try:
+            parsed = urlparse(product_url)
+        except ValueError as exc:
+            raise ValidationError("Invalid URL") from exc
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValidationError("Invalid URL")
 

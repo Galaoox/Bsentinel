@@ -11,12 +11,25 @@ from bsentinel.application.services import (
     CatalogQueryService,
     ScrapingService,
 )
+from bsentinel.application.services.catalog_bulk import CatalogBulkService
 
-from .schemas import CreateBookRequest
+from .schemas import CreateBookRequest, CreateBooksBulkRequest, CreateBooksBulkResponse
 
 
-def build_catalog_router(get_command_service, get_query_service, get_scraping_service):
+def build_catalog_router(get_command_service, get_query_service, get_scraping_service, get_bulk_service):
     router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+    @router.post("/books/bulk", status_code=status.HTTP_201_CREATED,
+                 response_model=CreateBooksBulkResponse,
+                 responses={code: {"description": description} for code, description in [
+                     (400, "Invalid item or scraping failure"), (401, "JWT required"),
+                     (409, "Duplicate book-store relation"), (422, "Invalid request"),
+                     (500, "Persistence or infrastructure failure")]})
+    async def create_books_bulk(
+        payload: CreateBooksBulkRequest,
+        service: CatalogBulkService = Depends(get_bulk_service),
+    ):
+        return await service.create_books(payload.urls)
 
     @router.post("/books", status_code=status.HTTP_201_CREATED)
     async def create_book(

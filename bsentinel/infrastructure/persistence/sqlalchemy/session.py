@@ -46,7 +46,8 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
     async with session_factory() as session:
         try:
             yield session
-            await session.commit()
+            if not session.info.get("bulk_owns_transaction"):
+                await session.commit()
         except Exception:
             await session.rollback()
             raise

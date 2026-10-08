@@ -2,7 +2,43 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints, field_validator
+
+
+class CreateBooksBulkRequest(BaseModel):
+    urls: list[Annotated[str, StringConstraints(strict=True, max_length=2048)]] = Field(
+        min_length=1, max_length=20
+    )
+
+    @field_validator("urls")
+    @classmethod
+    def unique_urls(cls, urls: list[str]) -> list[str]:
+        if len(set(urls)) != len(urls):
+            raise ValueError("Duplicate URLs are not allowed")
+        return urls
+
+
+class CreateBookBulkItem(BaseModel):
+    index: int
+    url: str
+    book_id: str
+    relation_id: str
+    isbn: str
+    title: str
+    authors: list[str]
+    site: str
+    status: str
+
+
+class BulkMeta(BaseModel):
+    total: int
+
+
+class CreateBooksBulkResponse(BaseModel):
+    items: list[CreateBookBulkItem]
+    meta: BulkMeta
 
 
 class CreateBookRequest(BaseModel):
