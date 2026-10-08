@@ -2,6 +2,7 @@ import importlib
 import json
 from contextlib import AsyncExitStack
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,6 +15,23 @@ from bsentinel.infrastructure.api.root_app import (
 )
 
 root_app_module = importlib.import_module("bsentinel.infrastructure.api.root_app")
+
+
+@pytest.mark.asyncio
+async def test_run_scraping_batch_finishes_sql_session_before_returning(monkeypatch):
+    commits = []
+
+    async def fake_session_scope():
+        yield object()
+        commits.append(True)
+
+    scraping = SimpleNamespace(scrape_all_active=AsyncMock(return_value=4))
+    monkeypatch.setattr(root_app_module.settings, "persistence_backend", "sql")
+    monkeypatch.setattr(root_app_module, "session_scope", fake_session_scope)
+    monkeypatch.setattr(root_app_module, "_build_sql_services", lambda session: {"scraping": scraping})
+
+    assert await root_app_module.run_scraping_batch() == 4
+    assert commits == [True]
 
 
 class RuntimeStub:

@@ -157,6 +157,11 @@ Variables nuevas del runtime de scraping:
 - `SCRAPING_BROWSER_SOLVE_CLOUDFLARE`
 - `SCRAPING_BROWSER_REAL_CHROME`
 
+El scheduler usa `SCHEDULER_SCRAPE_INTERVAL_HOURS` (6 horas por defecto).
+Para probar cada minuto, configura `0.016666666666666666` en `secrets/.env`.
+Tras cambiarlo con Docker, ejecuta `docker compose up -d --force-recreate bsentinel`
+para cargar el nuevo intervalo. Cada arranque inicia la espera hasta el primer ciclo.
+
 ## Testing 🧪
 
 Con `Makefile`:

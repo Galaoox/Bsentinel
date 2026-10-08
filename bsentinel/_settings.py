@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     scraping_browser_real_chrome: bool = False
 
     # Configuración del scheduler
-    scheduler_scrape_interval_hours: int = 6
+    scheduler_scrape_interval_hours: float = 6
 
     # Configuración de OpenLibrary API
     openlibrary_api_url: str = "https://openlibrary.org"

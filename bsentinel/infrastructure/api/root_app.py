@@ -248,10 +248,11 @@ async def run_scraping_batch() -> int:
     if settings.persistence_backend == "in_memory":
         return await scraping_service.scrape_all_active()
 
+    updated = 0
     async for session in session_scope():
         services = _build_sql_services(session)
-        return await services["scraping"].scrape_all_active()
-    return 0
+        updated = await services["scraping"].scrape_all_active()
+    return updated
 
 
 scheduler = LocalScheduler(run_scraping_batch)

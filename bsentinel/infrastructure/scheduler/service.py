@@ -16,7 +16,7 @@ class LocalScheduler:
         self.run_scraping_batch = run_scraping_batch
         self.scheduler = AsyncIOScheduler()
 
-    def start(self, interval_hours: int = 6) -> None:
+    def start(self, interval_hours: float = 6) -> None:
         if self.scheduler.running:
             return
         self.scheduler.add_job(self._run_scraping, "interval", hours=interval_hours, id="scrape_all")
