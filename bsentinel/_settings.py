@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     scraping_runtime: str = "http"  # http | browser
     scraping_http_timeout: int = 30
     scraping_http_retries: int = 2
+    scraping_http_transient_retry_attempts: int = 2
+    scraping_http_transient_retry_delay_ms: int = 250
+    scraping_http_profile: str = "chrome_stable"
     scraping_http_impersonate: str | None = None
     scraping_http_http3: bool = False
     scraping_http_stealthy_headers: bool = True

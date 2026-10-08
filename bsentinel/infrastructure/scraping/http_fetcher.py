@@ -15,18 +15,23 @@ class HttpFetcherSession:
         *,
         timeout: int,
         retries: int,
+        profile: str = "chrome_stable",
         impersonate: str | None = None,
         http3: bool = False,
         stealthy_headers: bool = True,
         proxy: str | None = None,
     ) -> None:
-        self._config = {
+        self._effective_config = {
+            "profile": profile,
             "timeout": timeout,
             "retries": retries,
             "impersonate": impersonate or "chrome",
             "http3": http3,
             "stealthy_headers": stealthy_headers,
             "proxy": proxy,
+        }
+        self._config = {
+            key: value for key, value in self._effective_config.items() if key != "profile"
         }
         self._manager: FetcherSession | None = None
         self._session: Any | None = None
@@ -59,3 +64,7 @@ class HttpFetcherSession:
     @property
     def is_started(self) -> bool:
         return self._session is not None
+
+    @property
+    def effective_config(self) -> dict[str, Any]:
+        return dict(self._effective_config)

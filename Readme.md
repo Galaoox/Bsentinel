@@ -141,6 +141,10 @@ uv run python -m bsentinel.infrastructure.api
 - Swagger 📘: `http://localhost:8000/docs`
 - Health ✅: `http://localhost:8000/health`
 
+Las fichas JSON-LD se reconocen con `@type: "Product"` o con una lista que incluya
+`"Product"`, como `["Product", "Book"]`. En ambos casos se extraen los datos del
+libro y su oferta con las reglas configuradas por tienda.
+
 Variables nuevas del runtime de scraping:
 
 - `SCRAPING_RUNTIME` (`http` por defecto, `browser` para forzar Chromium)

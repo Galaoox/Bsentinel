@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from bsentinel.domain.models import ACTIVE, UNKNOWN, Store
 from bsentinel.exceptions import ScrapingError
@@ -21,6 +22,14 @@ DECIMAL_COMMA_PATTERN = re.compile(r"^\d+,\d{2}$")
 DECIMAL_DOT_PATTERN = re.compile(r"^\d+\.\d{2}$")
 INTEGER_PATTERN = re.compile(r"^\d+$")
 logger = logging.getLogger(__name__)
+SUSPICIOUS_MARKERS = (
+    "cf-challenge",
+    "checking your browser",
+    "enable javascript and cookies",
+    "verify your request",
+    "just a moment",
+    "captcha",
+)
 
 
 @dataclass(slots=True)
@@ -37,9 +46,26 @@ class ScrapeResult:
     checked_at: datetime
 
 
+@dataclass(slots=True)
+class PageClassification:
+    kind: str
+    reason: str
+    signals: dict[str, Any]
+
+
 class ConfiguredStoreScraper:
-    def __init__(self, browser_session: Any | None = None) -> None:
+    def __init__(
+        self,
+        browser_session: Any | None = None,
+        *,
+        transient_retry_attempts: int = 2,
+        transient_retry_delay_ms: int = 250,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> None:
         self._session = browser_session
+        self._transient_retry_attempts = max(0, int(transient_retry_attempts))
+        self._transient_retry_delay_ms = max(0, int(transient_retry_delay_ms))
+        self._sleep = sleep
 
     def set_session(self, session: Any | None) -> None:
         self._session = session
@@ -109,9 +135,50 @@ class ConfiguredStoreScraper:
             )
 
         try:
-            page = await self._session.fetch(product_url)
-            self._validate_page_response(store, product_url, page)
-            return page
+            transient_attempts = 0
+            last_page: Any | None = None
+            last_classification: PageClassification | None = None
+
+            for attempt in range(1, self._transient_retry_attempts + 2):
+                page = await self._session.fetch(product_url)
+                classification = self._classify_page_response(store, page)
+
+                if classification.kind == "usable":
+                    return page
+
+                if classification.kind != "transient_suspicious":
+                    raise self._build_response_error(store, product_url, page, classification)
+
+                transient_attempts = attempt
+                last_page = page
+                last_classification = classification
+
+                if attempt <= self._transient_retry_attempts:
+                    await self._sleep(self._transient_retry_delay_ms / 1000)
+                    continue
+
+                raise self._build_transient_exhaustion_error(
+                    store=store,
+                    product_url=product_url,
+                    page=page,
+                    classification=classification,
+                    transient_attempts=transient_attempts,
+                )
+
+            if last_page is not None and last_classification is not None:
+                raise self._build_transient_exhaustion_error(
+                    store=store,
+                    product_url=product_url,
+                    page=last_page,
+                    classification=last_classification,
+                    transient_attempts=transient_attempts,
+                )
+
+            raise ScrapingError(
+                f"Unable to fetch page for store {store.domain}",
+                reason="fetch_failed",
+                diagnostics={"store_domain": store.domain, "product_url": product_url},
+            )
         except Exception as exc:  # pragma: no cover - network/runtime behavior depends on target site
             if isinstance(exc, ScrapingError):
                 raise
@@ -126,19 +193,61 @@ class ConfiguredStoreScraper:
             ) from exc
 
     def _validate_page_response(self, store: Store, product_url: str, page: Any) -> None:
+        classification = self._classify_page_response(store, page)
+        if classification.kind != "usable":
+            raise self._build_response_error(store, product_url, page, classification)
+
+    def _classify_page_response(self, store: Store, page: Any) -> PageClassification:
         body_bytes = self._read_body(page)
         body_text = body_bytes.decode(getattr(page, "encoding", "utf-8") or "utf-8", errors="ignore").strip()
+        body_text_lower = body_text.lower()
         status_code = int(getattr(page, "status", 0) or 0)
         content_type = str((getattr(page, "headers", {}) or {}).get("content-type", "")).lower()
 
         if status_code >= 400:
-            raise self._build_response_error(store, product_url, page, "http_error")
-        if status_code == 202 and len(body_text) < 32:
-            raise self._build_response_error(store, product_url, page, "accepted_without_html")
+            return PageClassification(
+                kind="invalid_fetch",
+                reason="http_error",
+                signals={"status_code": status_code, "body_length": len(body_bytes)},
+            )
         if not body_text:
-            raise self._build_response_error(store, product_url, page, "empty_body")
+            reason = "fetch_interstitial" if status_code == 202 else "empty_body"
+            kind = "transient_suspicious" if status_code == 202 else "invalid_fetch"
+            return PageClassification(
+                kind=kind,
+                reason=reason,
+                signals={"status_code": status_code, "body_length": len(body_bytes), "challenge_detected": False},
+            )
         if content_type and "html" not in content_type and "xhtml+xml" not in content_type:
-            raise self._build_response_error(store, product_url, page, "unexpected_content_type")
+            return PageClassification(
+                kind="invalid_fetch",
+                reason="unexpected_content_type",
+                signals={"status_code": status_code, "body_length": len(body_bytes)},
+            )
+
+        product = self._extract_product_json_ld(page)
+        title = self._extract_text_field(store, "title", page, product)
+        authors = self._extract_list_field(store, "authors", page, product)
+        isbn = self._extract_text_field(store, "isbn", page, product)
+        challenge_detected = any(marker in body_text_lower for marker in SUSPICIOUS_MARKERS)
+        product_signal_count = sum((bool(title), bool(authors), bool(isbn)))
+        signals = {
+            "status_code": status_code,
+            "body_length": len(body_bytes),
+            "content_type": content_type,
+            "challenge_detected": challenge_detected,
+            "product_json_ld_found": bool(product),
+            "product_signal_count": product_signal_count,
+            "title_found": bool(title),
+            "authors_found": bool(authors),
+            "isbn_found": bool(isbn),
+        }
+
+        if status_code == 202 or challenge_detected:
+            return PageClassification(kind="transient_suspicious", reason="fetch_interstitial", signals=signals)
+        if product or product_signal_count >= 2:
+            return PageClassification(kind="usable", reason="usable", signals=signals)
+        return PageClassification(kind="transient_suspicious", reason="fetch_interstitial", signals=signals)
 
     def _read_body(self, page: Any) -> bytes:
         body = getattr(page, "body", b"")
@@ -151,7 +260,10 @@ class ConfiguredStoreScraper:
     def _extract_product_json_ld(self, selector: Any) -> dict[str, Any]:
         for raw_script in selector.css("script[type='application/ld+json']::text").getall():
             for candidate in self._iter_json_objects(str(raw_script)):
-                if candidate.get("@type") == "Product":
+                product_types = candidate.get("@type")
+                if product_types == "Product" or (
+                    isinstance(product_types, list) and "Product" in product_types
+                ):
                     return candidate
         return {}
 
@@ -294,7 +406,13 @@ class ConfiguredStoreScraper:
             diagnostics=diagnostics,
         )
 
-    def _build_response_error(self, store: Store, product_url: str, page: Any, reason: str) -> ScrapingError:
+    def _build_response_error(
+        self,
+        store: Store,
+        product_url: str,
+        page: Any,
+        classification: PageClassification,
+    ) -> ScrapingError:
         diagnostics = {
             "store_domain": store.domain,
             "product_url": product_url,
@@ -302,14 +420,48 @@ class ConfiguredStoreScraper:
             "status_code": getattr(page, "status", None),
             "content_type": (getattr(page, "headers", {}) or {}).get("content-type"),
             "body_length": len(self._read_body(page)),
+            "classification": classification.kind,
+            **classification.signals,
         }
         logger.warning(
             "Scraping HTTP response unusable",
-            extra={"scraping_reason": reason, **diagnostics},
+            extra={"scraping_reason": classification.reason, **diagnostics},
         )
         return ScrapingError(
-            f"Unable to fetch usable HTML for store {store.domain}: {reason}",
-            reason=reason,
+            f"Unable to fetch usable HTML for store {store.domain}: {classification.reason}",
+            reason=classification.reason,
+            diagnostics=diagnostics,
+        )
+
+    def _build_transient_exhaustion_error(
+        self,
+        *,
+        store: Store,
+        product_url: str,
+        page: Any,
+        classification: PageClassification,
+        transient_attempts: int,
+    ) -> ScrapingError:
+        diagnostics = {
+            "store_domain": store.domain,
+            "product_url": product_url,
+            "final_url": str(getattr(page, "url", product_url)),
+            "status_code": getattr(page, "status", None),
+            "content_type": (getattr(page, "headers", {}) or {}).get("content-type"),
+            "body_length": len(self._read_body(page)),
+            "classification": classification.kind,
+            "last_classification": classification.kind,
+            "last_reason": classification.reason,
+            "transient_attempts": transient_attempts,
+            **classification.signals,
+        }
+        logger.warning(
+            "Scraping HTTP transient response exhausted",
+            extra={"scraping_reason": "interstitial_transient_exhausted", **diagnostics},
+        )
+        return ScrapingError(
+            f"Unable to fetch usable HTML for store {store.domain}: interstitial_transient_exhausted",
+            reason="interstitial_transient_exhausted",
             diagnostics=diagnostics,
         )
 

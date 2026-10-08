@@ -11,6 +11,7 @@ def test_build_scraping_runtime_defaults_to_http():
     settings = SimpleNamespace(
         scraping_http_timeout=20,
         scraping_http_retries=5,
+        scraping_http_profile="chrome_stable",
         scraping_http_impersonate="chrome",
         scraping_http_http3=True,
         scraping_http_stealthy_headers=False,
@@ -20,6 +21,37 @@ def test_build_scraping_runtime_defaults_to_http():
     runtime = build_scraping_runtime(settings)
 
     assert isinstance(runtime, HttpFetcherSession)
+    assert runtime.effective_config == {
+        "profile": "chrome_stable",
+        "timeout": 20,
+        "retries": 5,
+        "impersonate": "chrome",
+        "http3": True,
+        "stealthy_headers": False,
+        "proxy": "http://user:pass@proxy.example:8080",
+    }
+
+
+def test_build_scraping_runtime_uses_http_profile_defaults_when_overrides_are_missing():
+    settings = SimpleNamespace(
+        scraping_http_timeout=30,
+        scraping_http_retries=2,
+        scraping_http_profile="firefox_stable",
+        scraping_http_proxy=None,
+    )
+
+    runtime = build_scraping_runtime(settings)
+
+    assert isinstance(runtime, HttpFetcherSession)
+    assert runtime.effective_config == {
+        "profile": "firefox_stable",
+        "timeout": 30,
+        "retries": 2,
+        "impersonate": "firefox",
+        "http3": False,
+        "stealthy_headers": True,
+        "proxy": None,
+    }
 
 
 def test_build_scraping_runtime_uses_browser_when_explicitly_configured():

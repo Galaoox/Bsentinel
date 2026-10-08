@@ -51,6 +51,7 @@ async def test_http_fetcher_session_starts_fetches_and_closes(monkeypatch: pytes
     session = HttpFetcherSession(
         timeout=15,
         retries=4,
+        profile="chrome_stable",
         impersonate="chrome",
         http3=True,
         stealthy_headers=False,
@@ -73,6 +74,15 @@ async def test_http_fetcher_session_starts_fetches_and_closes(monkeypatch: pytes
     }
     assert created["manager"].client.calls == [("https://example.com/book", {})]
     assert created["manager"].closed is True
+    assert session.effective_config == {
+        "profile": "chrome_stable",
+        "timeout": 15,
+        "retries": 4,
+        "impersonate": "chrome",
+        "http3": True,
+        "stealthy_headers": False,
+        "proxy": "http://user:pass@proxy.example:8080",
+    }
 
 
 @pytest.mark.asyncio
@@ -115,3 +125,17 @@ async def test_http_fetcher_session_sanitizes_proxy_credentials_on_fetch_error(m
 
     assert "http://***:***@proxy.example:8080" in str(exc_info.value)
     assert "http://user:pass@proxy.example:8080" not in str(exc_info.value)
+
+
+def test_http_fetcher_session_exposes_effective_config_without_starting_runtime():
+    session = HttpFetcherSession(timeout=30, retries=2, profile="firefox_stable", impersonate="firefox")
+
+    assert session.effective_config == {
+        "profile": "firefox_stable",
+        "timeout": 30,
+        "retries": 2,
+        "impersonate": "firefox",
+        "http3": False,
+        "stealthy_headers": True,
+        "proxy": None,
+    }

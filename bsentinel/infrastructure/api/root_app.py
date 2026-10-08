@@ -67,7 +67,11 @@ in_memory_store = InMemoryStore()
 metadata_client = OpenLibraryClient()
 scraping_runtime = build_scraping_runtime(settings)
 browser_session = scraping_runtime
-scraper_client = ConfiguredStoreScraper(browser_session=scraping_runtime)
+scraper_client = ConfiguredStoreScraper(
+    browser_session=scraping_runtime,
+    transient_retry_attempts=settings.scraping_http_transient_retry_attempts,
+    transient_retry_delay_ms=settings.scraping_http_transient_retry_delay_ms,
+)
 token_manager = JWTTokenManager(
     secret_key=settings.jwt_secret_key,
     algorithm=settings.jwt_algorithm,
@@ -348,7 +352,16 @@ async def standard_exception_handler(request: Request, exc: StandardException):
                 "scraping_diagnostics": safe_diagnostics,
             },
         )
-        return _error_response(request, status_code=400, code="SCRAPING_ERROR", message=safe_message)
+        return _error_response(
+            request,
+            status_code=400,
+            code="SCRAPING_ERROR",
+            message=safe_message,
+            details={
+                "scraping_reason": getattr(exc, "reason", None),
+                "scraping_diagnostics": safe_diagnostics,
+            },
+        )
     if isinstance(exc, EntityDoesNotExistError):
         return _error_response(request, status_code=404, code="ENTITY_NOT_FOUND", message=str(exc))
     if isinstance(exc, EntityAlreadyExistsError):

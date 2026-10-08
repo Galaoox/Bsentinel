@@ -100,6 +100,10 @@ async def test_standard_scraping_exception_handler_logs_request_context(monkeypa
     assert response.status_code == 400
     assert body["request_id"] == "req-123"
     assert body["error"]["code"] == "SCRAPING_ERROR"
+    assert body["error"]["details"] == {
+        "scraping_reason": "authors_not_found",
+        "scraping_diagnostics": {"field_name": "authors", "attempted_sources": 2},
+    }
     assert captured["message"] == "Scraping request failed"
     assert captured["extra"] == {
         "request_id": "req-123",
@@ -140,6 +144,13 @@ async def test_standard_scraping_exception_handler_sanitizes_proxy_credentials(m
     body = json.loads(response.body.decode("utf-8"))
     assert response.status_code == 400
     assert body["error"]["message"] == "HTTP runtime failed via http://***:***@proxy.example:8080"
+    assert body["error"]["details"] == {
+        "scraping_reason": "fetch_failed",
+        "scraping_diagnostics": {
+            "proxy_url": "http://***:***@proxy.example:8080",
+            "nested": ["http://***:***@proxy.example:8080", {"proxy": "http://***:***@proxy.example:8080"}],
+        },
+    }
     assert captured["message"] == "Scraping request failed"
     assert captured["extra"] == {
         "request_id": "req-999",
