@@ -49,6 +49,46 @@ _DEFAULT_BUSCALIBRE_RULES = {
     },
 }
 
+_DEFAULT_PANAMERICANA_RULES = {
+    "title": {
+        "sources": [
+            {"kind": "json_ld", "path": "name", "normalizer": "text_trim"},
+            {"kind": "css", "selector": "h1", "attribute": "text", "normalizer": "text_trim"},
+        ]
+    },
+    "authors": {
+        "sources": [
+            {"kind": "json_ld", "path": "author[].name", "normalizer": "text_trim"},
+            {"kind": "vtex_property", "path": "Autor", "normalizer": "text_trim"},
+        ]
+    },
+    "isbn": {
+        "sources": [
+            {"kind": "json_ld", "path": "isbn", "normalizer": "isbn_digits"},
+            {"kind": "vtex_property", "path": "ISBN", "normalizer": "isbn_digits"},
+        ]
+    },
+    "price": {
+        "sources": [
+            {"kind": "json_ld", "path": "offers.lowPrice", "normalizer": "price_cop_mixed"},
+            {"kind": "json_ld", "path": "offers.offers[].price", "normalizer": "price_cop_mixed"},
+        ]
+    },
+    "availability": {
+        "sources": [
+            {
+                "kind": "json_ld",
+                "path": "offers.offers[].availability",
+                "normalizer": "availability_buscalibre",
+            },
+        ]
+    },
+}
+
 
 def build_default_buscalibre_rules() -> dict:
     return deepcopy(_DEFAULT_BUSCALIBRE_RULES)
+
+
+def build_default_panamericana_rules() -> dict:
+    return deepcopy(_DEFAULT_PANAMERICANA_RULES)

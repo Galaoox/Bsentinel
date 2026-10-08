@@ -14,7 +14,7 @@ from bsentinel.domain.models import Store, now_utc
 from bsentinel.exceptions import EntityAlreadyExistsError, EntityDoesNotExistError, ValidationError
 
 ALPHA2_PATTERN = re.compile(r"^[A-Z]{2}$")
-SUPPORTED_SOURCE_KINDS = {"css", "json_ld"}
+SUPPORTED_SOURCE_KINDS = {"css", "json_ld", "vtex_property"}
 SUPPORTED_NORMALIZERS = {
     "text_trim",
     "isbn_digits",
@@ -203,9 +203,9 @@ class StoreCommandService:
 
         path = str(source.get("path") or "").strip()
         if not path:
-            raise ValidationError(f"Field '{field_name}' json_ld source requires path")
+            raise ValidationError(f"Field '{field_name}' {kind} source requires path")
         return {
-            "kind": "json_ld",
+            "kind": kind,
             "path": path,
             **({"regex": str(regex)} if regex is not None else {}),
             **({"normalizer": normalizer} if normalizer is not None else {}),

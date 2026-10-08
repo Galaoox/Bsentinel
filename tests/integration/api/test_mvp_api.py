@@ -58,11 +58,14 @@ def test_protected_v1_endpoints_reject_anonymous_requests(client):
     assert response.json()["error"]["code"] == "AUTH_INVALID_TOKEN"
 
 
-def test_system_info_reports_buscalibre_only(client):
+def test_system_info_reports_supported_mvp_sites(client):
     response = client.get("/api/v1/system/info", headers=login_headers(client))
 
     assert response.status_code == 200
-    assert response.json()["supported_sites"] == ["www.buscalibre.com.co"]
+    assert response.json()["supported_sites"] == [
+        "www.buscalibre.com.co",
+        "www.panamericana.com.co",
+    ]
 
 
 def test_create_book_and_list_flow(client):
@@ -81,6 +84,22 @@ def test_create_book_and_list_flow(client):
     assert len(listed) == 1
     assert listed[0]["status"] == "activo"
     assert listed[0]["title"] == "Libro El Principito 9780156012195"
+
+
+def test_create_panamericana_book(client):
+    payload = {
+        "url": "https://www.panamericana.com.co/el-metal-perdido-isbn-9788410466456/p"
+    }
+
+    response = client.post(
+        "/api/v1/catalog/books",
+        json=payload,
+        headers=login_headers(client),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["site"] == "www.panamericana.com.co"
+    assert response.json()["isbn"] == "9788410466456"
 
 
 def test_create_duplicate_book_relation_returns_409(client):

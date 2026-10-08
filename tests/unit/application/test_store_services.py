@@ -5,7 +5,10 @@ import pytest
 from bsentinel.application.services.stores import StoreCommandService, StoreQueryService
 from bsentinel.exceptions import EntityDoesNotExistError, ValidationError
 from bsentinel.infrastructure.persistence.in_memory import InMemoryStore, InMemoryStoreRepository
-from bsentinel.infrastructure.scraping.rules import build_default_buscalibre_rules
+from bsentinel.infrastructure.scraping.rules import (
+    build_default_buscalibre_rules,
+    build_default_panamericana_rules,
+)
 
 
 @pytest.mark.asyncio
@@ -57,7 +60,7 @@ async def test_create_and_list_store():
     listed = await query_service.list_stores()
 
     assert created["domain"] == "www.demo.com"
-    assert listed["meta"]["total"] == 2
+    assert listed["meta"]["total"] == 3
     assert any(item["domain"] == "www.demo.com" for item in listed["items"])
 
 
@@ -79,6 +82,43 @@ async def test_create_store_accepts_explicit_price_normalizers():
     )
 
     assert created["extraction_rules"]["price"]["sources"][0]["normalizer"] == "price_cop_mixed"
+
+
+@pytest.mark.asyncio
+async def test_create_store_accepts_vtex_property_source():
+    service = StoreCommandService(stores=InMemoryStoreRepository(InMemoryStore()))
+
+    created = await service.create_store(
+        name="VTEX Store",
+        domain="www.vtex-test.com",
+        country_code="CO",
+        scrape_interval_hours=6,
+        is_active=True,
+        extraction_rules=build_default_panamericana_rules(),
+    )
+
+    assert created["extraction_rules"]["authors"]["sources"][1] == {
+        "kind": "vtex_property",
+        "path": "Autor",
+        "normalizer": "text_trim",
+    }
+
+
+@pytest.mark.asyncio
+async def test_create_store_rejects_vtex_property_source_without_path():
+    service = StoreCommandService(stores=InMemoryStoreRepository(InMemoryStore()))
+    rules = build_default_panamericana_rules()
+    rules["isbn"]["sources"][1].pop("path")
+
+    with pytest.raises(ValidationError, match="vtex_property source requires path"):
+        await service.create_store(
+            name="VTEX Store",
+            domain="www.vtex-test.com",
+            country_code="CO",
+            scrape_interval_hours=6,
+            is_active=True,
+            extraction_rules=rules,
+        )
 
 
 @pytest.mark.asyncio

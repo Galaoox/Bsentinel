@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Awaitable, Callable
+from urllib.parse import urlparse
 
 from bsentinel.domain.models import ACTIVE, UNKNOWN, Store
 from bsentinel.exceptions import ScrapingError
@@ -29,6 +30,9 @@ SUSPICIOUS_MARKERS = (
     "verify your request",
     "just a moment",
     "captcha",
+)
+SUSPICIOUS_MARKER_PATTERNS = tuple(
+    re.compile(rf"\b{re.escape(marker)}\b") for marker in SUSPICIOUS_MARKERS
 )
 
 
@@ -72,7 +76,7 @@ class ConfiguredStoreScraper:
 
     async def extract_book_details(self, store: Store, product_url: str) -> ExtractedBookDetails:
         page = await self._fetch_page(store, product_url)
-        product = self._extract_product_json_ld(page)
+        product = self._extract_product_json_ld(page, product_url)
 
         title, title_attempts = self._extract_text_field_with_attempts(store, "title", page, product)
         authors, author_attempts = self._extract_list_field_with_attempts(store, "authors", page, product)
@@ -107,7 +111,7 @@ class ConfiguredStoreScraper:
 
     async def scrape_book(self, store: Store, product_url: str) -> ScrapeResult:
         page = await self._fetch_page(store, product_url)
-        product = self._extract_product_json_ld(page)
+        product = self._extract_product_json_ld(page, product_url)
         checked_at = datetime.now(UTC)
 
         status = self._extract_text_field(store, "availability", page, product) or ACTIVE
@@ -225,11 +229,11 @@ class ConfiguredStoreScraper:
                 signals={"status_code": status_code, "body_length": len(body_bytes)},
             )
 
-        product = self._extract_product_json_ld(page)
+        product = self._extract_product_json_ld(page, str(getattr(page, "url", "") or ""))
         title = self._extract_text_field(store, "title", page, product)
         authors = self._extract_list_field(store, "authors", page, product)
         isbn = self._extract_text_field(store, "isbn", page, product)
-        challenge_detected = any(marker in body_text_lower for marker in SUSPICIOUS_MARKERS)
+        challenge_detected = any(pattern.search(body_text_lower) for pattern in SUSPICIOUS_MARKER_PATTERNS)
         product_signal_count = sum((bool(title), bool(authors), bool(isbn)))
         signals = {
             "status_code": status_code,
@@ -257,15 +261,32 @@ class ConfiguredStoreScraper:
             return body.encode("utf-8")
         return bytes(body or b"")
 
-    def _extract_product_json_ld(self, selector: Any) -> dict[str, Any]:
+    def _extract_product_json_ld(self, selector: Any, product_url: str = "") -> dict[str, Any]:
+        first_product: dict[str, Any] = {}
         for raw_script in selector.css("script[type='application/ld+json']::text").getall():
             for candidate in self._iter_json_objects(str(raw_script)):
                 product_types = candidate.get("@type")
                 if product_types == "Product" or (
                     isinstance(product_types, list) and "Product" in product_types
                 ):
-                    return candidate
-        return {}
+                    if not first_product and (not product_url or "@id" not in candidate):
+                        first_product = candidate
+                    if self._same_product_url(candidate.get("@id"), product_url):
+                        return candidate
+        return first_product
+
+    def _same_product_url(self, candidate_url: Any, product_url: str) -> bool:
+        if not isinstance(candidate_url, str) or not product_url:
+            return False
+        candidate = urlparse(candidate_url)
+        requested = urlparse(product_url)
+        return (
+            candidate.netloc.lower(),
+            candidate.path.rstrip("/"),
+        ) == (
+            requested.netloc.lower(),
+            requested.path.rstrip("/"),
+        )
 
     def _iter_json_objects(self, raw_script: str) -> list[dict[str, Any]]:
         try:
@@ -472,6 +493,8 @@ class ConfiguredStoreScraper:
             raw_values = self._extract_css_values(selector, source)
         elif kind == "json_ld":
             raw_values = self._extract_json_ld_values(product, str(source.get("path") or ""))
+        elif kind == "vtex_property":
+            raw_values = self._extract_vtex_property_values(selector, product, str(source.get("path") or ""))
 
         regex = source.get("regex")
         if not regex:
@@ -525,6 +548,56 @@ class ConfiguredStoreScraper:
             else:
                 flattened.append(item)
         return flattened
+
+    def _extract_vtex_property_values(
+        self,
+        selector: Any,
+        product: dict[str, Any],
+        property_name: str,
+    ) -> list[Any]:
+        product_id = product.get("@id")
+        page_url = str(getattr(selector, "url", "") or "")
+        if (
+            not isinstance(product_id, str)
+            or not property_name
+            or not self._same_product_url(product_id, page_url)
+        ):
+            return []
+
+        path_parts = [part for part in urlparse(product_id).path.split("/") if part]
+        if len(path_parts) < 2 or path_parts[-1] != "p":
+            return []
+        state_key = f"Product:{path_parts[-2]}"
+
+        for raw_script in selector.css("script::text").getall():
+            state = self._decode_vtex_state(str(raw_script))
+            state_product = state.get(state_key) if state else None
+            if not isinstance(state_product, dict):
+                continue
+            properties = state_product.get("properties")
+            if not isinstance(properties, list):
+                return []
+            for reference in properties:
+                if not isinstance(reference, dict) or reference.get("type") != "id":
+                    continue
+                reference_id = reference.get("id")
+                property_data = state.get(reference_id) if isinstance(reference_id, str) else None
+                if not isinstance(property_data, dict) or property_data.get("name") != property_name:
+                    continue
+                values = property_data.get("values")
+                json_values = values.get("json") if isinstance(values, dict) else None
+                return json_values if isinstance(json_values, list) else []
+        return []
+
+    def _decode_vtex_state(self, script: str) -> dict[str, Any]:
+        assignment = re.search(r"\b__STATE__\s*=\s*", script)
+        if not assignment:
+            return {}
+        try:
+            decoded, _ = json.JSONDecoder().raw_decode(script, assignment.end())
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        return decoded if isinstance(decoded, dict) else {}
 
     def _normalize_value(self, normalizer: str | None, value: Any) -> str | float | None:
         if value is None:

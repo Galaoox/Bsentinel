@@ -13,7 +13,7 @@ class FakeStoreRepository:
 
 
 @pytest.mark.asyncio
-async def test_system_query_reports_buscalibre_only_even_with_extra_store_data():
+async def test_system_query_reports_supported_mvp_sites_even_with_extra_store_data():
     service = SystemQueryService(
         stores=FakeStoreRepository(
             [
@@ -25,13 +25,13 @@ async def test_system_query_reports_buscalibre_only_even_with_extra_store_data()
 
     info = await service.get_info()
 
-    assert info["supported_sites"] == ["www.buscalibre.com.co"]
+    assert info["supported_sites"] == ["www.buscalibre.com.co", "www.panamericana.com.co"]
 
 
 @pytest.mark.asyncio
-async def test_system_query_reports_buscalibre_only_when_store_repo_is_empty():
+async def test_system_query_reports_supported_mvp_sites_when_store_repo_is_empty():
     service = SystemQueryService(stores=FakeStoreRepository([]))
 
     info = await service.get_info()
 
-    assert info["supported_sites"] == ["www.buscalibre.com.co"]
+    assert info["supported_sites"] == ["www.buscalibre.com.co", "www.panamericana.com.co"]

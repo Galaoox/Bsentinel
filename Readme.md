@@ -7,9 +7,9 @@ Backend para rastreo de precios de libros (MVP) con FastAPI y API versionada en 
 El proyecto implementa un MVP funcional para entorno local/dev con:
 
 - API `v1` protegida con autenticación JWT para endpoints funcionales
-- Soporte público MVP limitado a **Buscalibre Colombia**
-- Seed inicial de **Buscalibre Colombia** (`www.buscalibre.com.co`)
-- Reglas de extracción por tienda en JSON con fallbacks (`css` / `json_ld`)
+- Soporte público MVP para **Buscalibre Colombia** y **Panamericana Colombia**
+- Seeds iniciales de Buscalibre (`www.buscalibre.com.co`) y Panamericana (`www.panamericana.com.co`)
+- Reglas de extracción por tienda en JSON con fallbacks (`css` / `json_ld` / `vtex_property`)
 - Gestión de catálogo por ISBN con relaciones libro-tienda
 - Historial y comparación de precios
 - Archivado de historial por job
@@ -43,7 +43,7 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 ## Alcance MVP de Sitios 🏪
 
 - La API pública NO expone administración dinámica de tiendas en `/api/v1/stores`.
-- El soporte público actual del MVP está recortado a **Buscalibre Colombia**.
+- El soporte público actual del MVP incluye **Buscalibre Colombia** y **Panamericana Colombia**.
 - Internamente se conservan contratos neutrales por tienda para catálogo, scraping e historial.
 
 ## Endpoints MVP 🔌
@@ -145,6 +145,10 @@ Las fichas JSON-LD se reconocen con `@type: "Product"` o con una lista que inclu
 `"Product"`, como `["Product", "Book"]`. En ambos casos se extraen los datos del
 libro y su oferta con las reglas configuradas por tienda.
 
+En Panamericana, el título, precio y disponibilidad provienen del producto JSON-LD.
+El autor y el ISBN editorial se resuelven desde las propiedades referenciadas de
+`__STATE__` para el mismo slug VTEX; el `gtin` interno de la tienda no se usa como ISBN.
+
 Variables nuevas del runtime de scraping:
 
 - `SCRAPING_RUNTIME` (`http` por defecto, `browser` para forzar Chromium)
@@ -193,7 +197,7 @@ Fallback en entorno local con venv:
   - `stores`, `books`, `book_authors`, `book_categories`, `book_store_relations`,
   - `price_history`, `price_history_archive`, `archive_jobs`, `revoked_refresh_tokens`
 - `stores.extraction_rules` persiste configuración JSON/JSONB por tienda
-- Seed inicial automático para la tienda Buscalibre CO
+- Seeds iniciales automáticos para las tiendas Buscalibre CO y Panamericana CO
 
 ## Limitaciones actuales ⚠️
 
@@ -203,7 +207,7 @@ Fallback en entorno local con venv:
 - Integración OpenLibrary simplificada (best-effort).
 - Solo se persisten libros cuando la extracción produce un ISBN válido.
 - La administración pública multi-store quedó fuera del alcance del MVP actual.
-- El reemplazo profundo de `ConfiguredStoreScraper` sigue fuera de scope en este recorte Buscalibre-only.
+- El reemplazo profundo de `ConfiguredStoreScraper` sigue fuera de scope del MVP.
 - `tool.uv.dev-dependencies` está deprecado en `pyproject.toml` y debe migrarse a `dependency-groups.dev`.
 
 ## Documentación 📚

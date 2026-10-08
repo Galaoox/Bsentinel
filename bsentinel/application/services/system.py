@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from bsentinel.application.ports import StoreRepositoryPort
 
-SUPPORTED_MVP_SITES = ["www.buscalibre.com.co"]
+SUPPORTED_MVP_SITES = ["www.buscalibre.com.co", "www.panamericana.com.co"]
 
 
 class SystemQueryService:

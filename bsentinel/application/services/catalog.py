@@ -22,7 +22,7 @@ from bsentinel.exceptions import (
     ValidationError,
 )
 
-SUPPORTED_MVP_DOMAINS = {"www.buscalibre.com.co"}
+SUPPORTED_MVP_DOMAINS = {"www.buscalibre.com.co", "www.panamericana.com.co"}
 
 
 class CatalogCommandService:

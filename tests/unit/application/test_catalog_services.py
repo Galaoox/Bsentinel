@@ -117,6 +117,36 @@ async def test_catalog_command_keeps_seed_store_relation_for_buscalibre_books():
 
 
 @pytest.mark.asyncio
+async def test_catalog_command_links_same_isbn_to_panamericana_without_duplicate_book():
+    storage = InMemoryStore()
+    scraper = FakeScraper()
+    books = InMemoryBookRepository(storage)
+    relations = InMemoryRelationRepository(storage)
+    service = CatalogCommandService(
+        books=books,
+        stores=InMemoryStoreRepository(storage),
+        relations=relations,
+        metadata=FakeMetadataProvider(),
+        scraper=scraper,
+    )
+
+    buscalibre_book, _, _ = await service.create_book_from_url(
+        "https://www.buscalibre.com.co/libro-clean-architecture"
+    )
+    panamericana_book, relation, site = await service.create_book_from_url(
+        "https://www.panamericana.com.co/clean-architecture/p"
+    )
+
+    assert site == "www.panamericana.com.co"
+    assert panamericana_book.id == buscalibre_book.id
+    assert len(await books.list(include_deleted=True)) == 1
+    assert len(await relations.list_for_book(buscalibre_book.id)) == 2
+    panamericana_store = await InMemoryStoreRepository(storage).get_by_domain(site)
+    assert panamericana_store is not None
+    assert relation.store_id == panamericana_store.id
+
+
+@pytest.mark.asyncio
 async def test_catalog_command_rejects_missing_isbn():
     storage = InMemoryStore()
     service = CatalogCommandService(

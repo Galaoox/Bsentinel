@@ -12,7 +12,7 @@ Feature: Proceso de scraping configurado
     Given que la tienda soportada tiene reglas para "title", "authors" e "isbn"
     When el sistema procesa una URL de producto para crear el libro
     Then hace fetch de la página del producto
-    And intenta extraer datos desde fuentes "css" y/o "json_ld"
+And intenta extraer datos desde fuentes "css", "json_ld" y/o "vtex_property"
     And exige título, autores e ISBN utilizables para completar el alta
 
   Scenario: Ejecutar scraping inmediato después de crear una relación
@@ -49,7 +49,7 @@ Feature: Proceso de scraping configurado
 
   Rule: Contrato observable actual
     - La implementación actual usa una sesión de navegador stealth compartida, no un cliente HTTP simple por tienda.
-    - Las reglas soportan sources "css" y "json_ld" con normalizers configurables.
+- Las reglas soportan sources "css", "json_ld" y "vtex_property" con normalizers configurables.
     - El proceso batch existe en la aplicación, pero no tiene endpoint público propio en la API v1.
 
   Rule: Fuera de alcance actual

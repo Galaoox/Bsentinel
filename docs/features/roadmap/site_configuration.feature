@@ -31,7 +31,7 @@ Feature: Configuración administrativa de tiendas
     And las reglas deben incluir "title", "authors", "isbn" y "price"
     And "availability" es opcional
     And cada field debe definir al menos un source
-    And cada source soporta únicamente los tipos "css" o "json_ld"
+And cada source soporta únicamente los tipos "css", "json_ld" o "vtex_property"
 
   Scenario: Validar country code y selectores
     When envío una petición POST autenticada a "/api/v1/stores" con un country code semánticamente inválido o con un selector CSS inválido
