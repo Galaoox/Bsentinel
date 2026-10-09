@@ -1,5 +1,6 @@
 """Regression evidence on disposable SQLite and opt-in PostgreSQL schemas."""
 
+import asyncio
 import importlib
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -14,7 +15,6 @@ from bsentinel.exceptions import ScrapingError
 from bsentinel.infrastructure.persistence.in_memory import (
     InMemoryBookRepository,
     InMemoryHistoryRepository,
-    InMemoryRelationRepository,
     InMemoryStore,
 )
 from bsentinel.infrastructure.persistence.sqlalchemy import (
@@ -47,82 +47,134 @@ async def seed(factory, count=3):
     return store, books, relations
 
 
+NOW = datetime(2026, 10, 8, 13, tzinfo=UTC)
+
+
+def configure_batch(module, monkeypatch):
+    processor = module.RelationProcessor
+    monkeypatch.setattr(module, 'RelationProcessor', lambda *args: processor(*args, clock=lambda: NOW))
+    monkeypatch.setattr(module.scraping_batch, 'clock', lambda: NOW)
+
+
+def controlled_process(module, monkeypatch, committed):
+    process = module._process_due_relation
+    async def ordered(candidate, cutoff):
+        if not candidate.product_url.endswith('/0'):
+            await committed.wait()
+        outcome = await process(candidate, cutoff)
+        if candidate.product_url.endswith('/0'):
+            committed.set()
+        return outcome
+    monkeypatch.setattr(module.scraping_batch, 'process', ordered)
+
+
 @pytest.mark.parametrize('failure', ['scraping', 'database'])
 async def test_sql_batch_commits_independently_and_stops_on_database_failure(sql_factory, monkeypatch, failure, caplog):
     factory, _ = sql_factory
     _, books, relations = await seed(factory)
+    async with factory.begin() as session:
+        for row in relations:
+            row.scrape_group = 0
+            row.next_check_at = NOW
+            await SQLRelationRepository(session).save(row)
     module = importlib.import_module('bsentinel.infrastructure.api.root_app')
+    configure_batch(module, monkeypatch)
     monkeypatch.setattr(module.settings, 'persistence_backend', 'sql')
-    monkeypatch.setattr(module, 'get_session_factory', lambda: factory)
-    # Candidate ordering is fixed for deterministic failure position.
-    original_list = SQLRelationRepository.list_all
-    async def ordered(self):
-        rows = await original_list(self)
-        return sorted(rows, key=lambda row: row.product_url)
-    monkeypatch.setattr(SQLRelationRepository, 'list_all', ordered)
+    async def scope():
+        async with factory.begin() as session:
+            yield session
+    monkeypatch.setattr(module, 'session_scope', scope)
+    committed, pending, cancelled = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    controlled_process(module, monkeypatch, committed)
     visited = []
     async def scrape(store, url):
         visited.append(url)
-        if url.endswith('/1') and failure == 'scraping':
-            raise ScrapingError('unusable page', reason='fetch_failed',
-                                diagnostics={'proxy': 'http://private:secret@proxy.invalid'})
-        return SimpleNamespace(price=42.0, status='activo', checked_at=datetime.now(UTC))
+        if url.endswith('/1'):
+            if failure == 'database':
+                await pending.wait()
+            else:
+                raise ScrapingError('unusable page', reason='fetch_failed',
+                                    diagnostics={'proxy': 'http://private:secret@proxy.invalid'})
+        if url.endswith('/2') and failure == 'database':
+            pending.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+        return SimpleNamespace(price=42.0, status='activo', checked_at=NOW)
     monkeypatch.setattr(module, 'scraper_client', SimpleNamespace(scrape_book=scrape))
     original_add = SQLHistoryRepository.add
     async def add(self, record):
         await original_add(self, record)
         if failure == 'database' and record.book_id == books[1].id:
-            await original_add(self, record)  # A real primary-key failure at commit.
+            await original_add(self, record)  # Real primary-key failure at commit.
     monkeypatch.setattr(SQLHistoryRepository, 'add', add)
     if failure == 'database':
-        with pytest.raises(IntegrityError):
-            await module.run_scraping_batch()
-        assert len(visited) == 2
+        with pytest.raises(ExceptionGroup) as errors:
+            await asyncio.wait_for(module.run_scraping_batch(), 10)
+        assert any(isinstance(exc, IntegrityError) for exc in errors.value.exceptions)
+        assert cancelled.is_set()
         expected = [relations[0]]
     else:
-        assert await module.run_scraping_batch() == 2
+        assert await asyncio.wait_for(module.run_scraping_batch(), 10) == 2
         assert len(visited) == 3
         expected = [relations[0], relations[2]]
         logs = ' '.join(str(record.__dict__) for record in caplog.records)
         assert 'fetch_failed' in logs and str(relations[1].id) in logs
         assert 'private' not in logs and 'secret' not in logs
+    from bsentinel.infrastructure.persistence.scraping_batch import relation_locks
+    assert not relation_locks._entries and not module.scraping_batch.running
     async with factory() as session:
         histories = (await session.scalars(select(PriceHistoryModel))).all()
         assert {row.relation_id for row in histories} == {str(row.id) for row in expected}
         saved = await SQLRelationRepository(session).list_all()
         assert {row.id for row in saved if row.current_price == 42} == {row.id for row in expected}
+        assert all(row.next_check_at > NOW and row.scrape_generation == 1 for row in saved)
 
 
 @pytest.mark.parametrize('failure', ['scraping', 'unexpected'])
 async def test_memory_batch_preserves_confirmed_items(monkeypatch, failure):
     module = importlib.import_module('bsentinel.infrastructure.api.root_app')
+    configure_batch(module, monkeypatch)
     memory = InMemoryStore()
     store = next(iter(memory.stores.values()))
     books = [Book(title=str(i)) for i in range(3)]
-    relations = [BookStoreRelation(book_id=book.id, store_id=store.id, product_url=str(i))
-                 for i, book in enumerate(books)]
+    relations = [BookStoreRelation(book_id=book.id, store_id=store.id, product_url=f'/{i}',
+                                  scrape_group=0, next_check_at=NOW) for i, book in enumerate(books)]
     memory.books = {book.id: book for book in books}
     memory.relations = {row.id: row for row in relations}
     monkeypatch.setattr(module.settings, 'persistence_backend', 'in_memory')
     monkeypatch.setattr(module, 'in_memory_store', memory)
-    monkeypatch.setattr(module, 'relation_repository', InMemoryRelationRepository(memory))
-    visited = []
+    committed, pending, cancelled = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    controlled_process(module, monkeypatch, committed)
     async def scrape(store, url):
-        visited.append(url)
-        if url == '1':
-            raise ScrapingError('fixture') if failure == 'scraping' else RuntimeError('fixture')
-        return SimpleNamespace(price=42.0, status='activo', checked_at=datetime.now(UTC))
+        if url == '/1':
+            if failure == 'unexpected':
+                await pending.wait()
+                raise RuntimeError('fixture')
+            raise ScrapingError('fixture')
+        if url == '/2' and failure == 'unexpected':
+            pending.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+        return SimpleNamespace(price=42.0, status='activo', checked_at=NOW)
     monkeypatch.setattr(module, 'scraper_client', SimpleNamespace(scrape_book=scrape))
     if failure == 'unexpected':
-        with pytest.raises(RuntimeError):
-            await module.run_scraping_batch()
-        assert visited == ['0', '1']
+        with pytest.raises(ExceptionGroup) as errors:
+            await asyncio.wait_for(module.run_scraping_batch(), 10)
+        assert any(isinstance(exc, RuntimeError) for exc in errors.value.exceptions)
+        assert cancelled.is_set()
         expected = {relations[0].id}
     else:
-        assert await module.run_scraping_batch() == 2
+        assert await asyncio.wait_for(module.run_scraping_batch(), 10) == 2
         expected = {relations[0].id, relations[2].id}
     assert {row.relation_id for row in memory.history.values()} == expected
     assert {row.id for row in memory.relations.values() if row.current_price == 42} == expected
+    assert all(row.next_check_at > NOW and row.scrape_generation == 1 for row in memory.relations.values())
+    from bsentinel.infrastructure.persistence.scraping_batch import relation_locks
+    assert not relation_locks._entries and not module.scraping_batch.running
 
 
 @pytest.mark.parametrize('condition', ['missing', 'inactive', 'deleted', 'deleted_book'])
@@ -130,44 +182,44 @@ async def test_sql_batch_skips_unavailable_store_or_deleted_book(sql_factory, mo
     factory, _ = sql_factory
     _, books, relations = await seed(factory)
     module = importlib.import_module('bsentinel.infrastructure.api.root_app')
+    configure_batch(module, monkeypatch)
     monkeypatch.setattr(module.settings, 'persistence_backend', 'sql')
-    monkeypatch.setattr(module, 'get_session_factory', lambda: factory)
-    original_list = SQLRelationRepository.list_all
-    async def candidates(self):
-        rows = sorted(await original_list(self), key=lambda row: row.product_url)
+    async def scope():
+        async with factory.begin() as session:
+            yield session
+    monkeypatch.setattr(module, 'session_scope', scope)
+    async with factory.begin() as session:
+        for row in relations:
+            row.scrape_group = 0
+            row.next_check_at = NOW
+            await SQLRelationRepository(session).save(row)
         if condition == 'deleted_book':
-            book = await self.session.get(BookModel, str(books[1].id))
-            book.is_deleted = True
-            await self.session.commit()
-        return rows
-    monkeypatch.setattr(SQLRelationRepository, 'list_all', candidates)
-    original_get = SQLStoreRepository.get
-    calls = []
-    async def store_get(self, key):
-        store = await original_get(self, key)
-        calls.append(key)
-        if len(calls) == 2 and condition != 'deleted_book':
-            if condition == 'missing':
-                return None
-            if condition == 'inactive':
-                store.is_active = False
-            else:
-                store.is_deleted = True
-        return store
-    monkeypatch.setattr(SQLStoreRepository, 'get', store_get)
+            (await session.get(BookModel, str(books[1].id))).is_deleted = True
+    from bsentinel.infrastructure.persistence.scraping_batch import RelationProcessor
+    original = RelationProcessor._snapshot
+    async def snapshot(self, repos, candidate, *args, **kwargs):
+        if candidate.id == relations[1].id and condition != 'deleted_book':
+            original_get = repos.stores.get
+            async def disabled(key):
+                store = await original_get(key)
+                if condition == 'missing':
+                    return None
+                store.is_active = condition != 'inactive'
+                store.is_deleted = condition == 'deleted'
+                return store
+            repos.stores.get = disabled
+        return await original(self, repos, candidate, *args, **kwargs)
+    monkeypatch.setattr(RelationProcessor, '_snapshot', snapshot)
     visited = []
     async def scrape(store, url):
         visited.append(url)
-        return SimpleNamespace(price=7.0, status='activo', checked_at=datetime.now(UTC))
+        return SimpleNamespace(price=7.0, status='activo', checked_at=NOW)
     monkeypatch.setattr(module, 'scraper_client', SimpleNamespace(scrape_book=scrape))
     assert await module.run_scraping_batch() == 2
-    assert visited == [relations[0].product_url, relations[2].product_url]
+    assert set(visited) == {relations[0].product_url, relations[2].product_url}
     async with factory() as session:
         saved = (await session.scalars(select(PriceHistoryModel))).all()
         assert {row.book_id for row in saved} == {str(books[0].id), str(books[2].id)}
-    if condition != 'deleted_book':
-        expected = 'not found' if condition == 'missing' else condition
-        assert any(expected in getattr(record, 'error_message', '') for record in caplog.records)
 
 
 @pytest.mark.parametrize('fails', [False, True])

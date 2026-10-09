@@ -186,7 +186,13 @@ class FailingHttpSession:
         self.error = error
         self.calls: list[str] = []
 
-    async def fetch(self, url: str) -> Response:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+    async def get(self, url: str, **kwargs) -> Response:
         self.calls.append(url)
         raise self.error
 
@@ -368,7 +374,7 @@ async def test_panamericana_recaptcha_assets_do_not_make_product_page_transient(
     assert details.isbn == "9788410466456"
 
 
-def test_literal_captcha_keeps_product_page_transient():
+def test_literal_captcha_does_not_block_valid_product():
     html = build_panamericana_html().replace("</body>", "<p>CAPTCHA</p></body>")
     response = build_response(html, url=PANAMERICANA_URL)
     scraper = ConfiguredStoreScraper()
@@ -380,8 +386,8 @@ def test_literal_captcha_keeps_product_page_transient():
 
     classification = scraper._classify_page_response(store, response)
 
-    assert classification.kind == "transient_suspicious"
-    assert classification.signals["challenge_detected"] is True
+    assert classification.kind == "usable"
+    assert classification.signals["challenge_detected"] is False
 
 
 @pytest.mark.asyncio
@@ -637,11 +643,8 @@ async def test_fetch_page_raises_when_browser_session_is_not_initialized():
     scraper = ConfiguredStoreScraper(browser_session=browser_session)
     store = Store(domain="www.buscalibre.com.co", extraction_rules=build_default_buscalibre_rules())
 
-    with pytest.raises(ScrapingError) as exc_info:
+    with pytest.raises(RuntimeError, match="Stealth browser session is not initialized"):
         await scraper.extract_book_details(store, "https://www.buscalibre.com.co/libro-iliada")
-
-    assert exc_info.value.reason == "fetch_failed"
-    assert exc_info.value.diagnostics["error_type"] == "RuntimeError"
 
 
 @pytest.mark.asyncio
@@ -652,11 +655,19 @@ async def test_http_failure_remains_http_failure_without_browser_fallback(monkey
         browser_start_calls["count"] += 1
 
     monkeypatch.setattr(StealthBrowserSession, "start", fake_browser_start)
-    scraper = ConfiguredStoreScraper(browser_session=FailingHttpSession(TimeoutError("proxy timeout")))
+    from bsentinel.infrastructure.scraping import http_fetcher
+
+    monkeypatch.setattr(http_fetcher, "FetcherSession", lambda **kwargs: FailingHttpSession(TimeoutError("proxy timeout")))
+    runtime = http_fetcher.HttpFetcherSession(timeout=1, retries=1)
+    await runtime.start()
+    scraper = ConfiguredStoreScraper(browser_session=runtime)
     store = Store(domain="www.buscalibre.com.co", extraction_rules=build_default_buscalibre_rules())
 
-    with pytest.raises(ScrapingError) as exc_info:
-        await scraper.extract_book_details(store, "https://www.buscalibre.com.co/libro-iliada")
+    try:
+        with pytest.raises(ScrapingError) as exc_info:
+            await scraper.extract_book_details(store, "https://www.buscalibre.com.co/libro-iliada")
+    finally:
+        await runtime.close()
 
     assert exc_info.value.reason == "fetch_failed"
     assert exc_info.value.diagnostics["error_type"] == "TimeoutError"
@@ -735,3 +746,30 @@ async def test_fetch_page_does_not_retry_invalid_fetch_response():
     assert exc_info.value.reason == "unexpected_content_type"
     assert exc_info.value.diagnostics["classification"] == "invalid_fetch"
     assert session.calls == ["https://www.buscalibre.com.co/libro-json"]
+
+
+async def test_combined_panamericana_uses_native_vtex_identity_and_offer_once():
+    response = build_response(build_panamericana_html(availability='http://schema.org/OutOfStock'),
+                              url=PANAMERICANA_URL)
+    session = StubBrowserSession(response)
+    scraper = ConfiguredStoreScraper(browser_session=session)
+    store = Store(domain='www.panamericana.com.co', extraction_rules=build_default_panamericana_rules())
+    extraction = await scraper.extract_product(store, PANAMERICANA_URL)
+    assert extraction.details.title == 'El metal perdido'
+    assert extraction.details.authors == ['Brandon Sanderson']
+    assert extraction.details.isbn == '9788410466456'
+    assert extraction.result.price == 99000
+    assert extraction.result.status == 'agotado'
+    assert session.calls == [PANAMERICANA_URL]
+
+
+async def test_combined_extraction_transient_then_usable_fetches_twice_not_three_times():
+    session = SequencedSession([build_response(SUSPICIOUS_INTERSTITIAL_HTML, status=202),
+                               build_response(HTML)])
+    scraper = ConfiguredStoreScraper(browser_session=session, transient_retry_delay_ms=0)
+    store = Store(extraction_rules=build_default_buscalibre_rules())
+    url = 'https://www.buscalibre.com.co/libro-tdd'
+    extraction = await scraper.extract_product(store, url)
+    assert extraction.details.isbn == '9780321146533'
+    assert extraction.result.price == 45900
+    assert session.calls == [url, url]

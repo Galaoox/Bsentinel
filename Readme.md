@@ -34,6 +34,7 @@ Swagger organiza las rutas de `v1` por controlador/tag, evitando agrupado único
 ## Reglas Actuales de Catálogo 📘
 
 - `POST /api/v1/catalog/books` resuelve la tienda por dominio y no por hardcode en el servicio.
+- Las URL de `buscalibre.com.co` y `panamericana.com.co` se resuelven a sus dominios canónicos `www.*`; el alias solo afecta scraping, persistencia y búsqueda de la tienda. No se aceptan subdominios arbitrarios, userinfo ni puertos.
 - El libro se identifica por `ISBN`; si no se puede extraer un ISBN válido, la API responde `VALIDATION_ERROR` y no persiste el libro.
 - Un mismo libro puede tener múltiples relaciones `book-store`, cada una con su `product_url`, precio actual e historial de precios.
 - La URL del producto ya no pertenece a `Book`; pertenece solo a `BookStoreRelation`.
@@ -75,15 +76,19 @@ Un ISBN faltante, inválido o extraído como fragmento de un número mayor devue
 `400 VALIDATION_ERROR` sin escrituras. Las fuentes de extracción pueden usar fallbacks.
 
 El alta individual confirma libro, relación, precio e historial en una sola
-transacción antes de devolver `201`. Un fallo de scraping, flush o commit revierte
+transacción antes de devolver `201`. Una sola extracción HTTP aporta datos del libro y
+la oferta; se registra ese resultado sin una segunda consulta. Un fallo de scraping, flush o commit revierte
 el alta; su respuesta conserva el formato individual, sin índice ni URL del lote.
 
-El batch del scheduler toma candidatos y abre una transacción por relación,
-revalidando que el libro siga vigente. Fallos de scraping y tiendas ausentes,
-inactivas o eliminadas se registran con IDs y diagnóstico sanitizado y el batch
-continúa. Errores de base de datos o inesperados detienen el batch conservando los
-éxitos ya confirmados; solo se cuentan confirmaciones. SQL usa sesiones separadas
-y memoria publica cada relación mediante una copia aislada.
+El batch usa tres workers y cola acotada; reserva cada ventana en una transacción
+corta antes de HTTP y publica precio/historial juntos en otra. Fallos recuperables
+(`ScrapingError`/`UnsupportedStoreError`) y resultados explícitos de pausa/omisión
+permiten continuar. Tiendas o libros deshabilitados se omiten al revalidar.
+Un error inesperado, de reserva o de publicación SQL aborta el lote: `TaskGroup`
+cancela y espera producer/workers (puede propagar `ExceptionGroup`). Los éxitos
+ya confirmados y las reservas durables permanecen; las reservas no se repiten
+tras reiniciar. La cancelación se propaga y libera sesiones, locks y permisos.
+Pausas por tienda y evidencia de tráfico se persisten independientemente del catálogo.
 
 Catálogo e historial aplican filtros y conteo antes de paginar. El orden es
 `created_at DESC, id DESC` para libros y `checked_at DESC, id DESC` para historial;
@@ -106,6 +111,17 @@ No fusiona, borra ni reasigna relaciones y no agrega unicidad al índice ISBN.
 Solo actualiza patrones ISBN predeterminados conocidos; conserva reglas custom.
 Los conflictos requieren revisión manual antes de registrar la misma identidad.
 El downgrade no reconstruye formatos previos: para recuperarlos restaura el backup.
+
+El único head es `0010_merge_audit_scraping`, una revisión vacía que une
+`0007_normalize_isbn` y `0009_store_blocks_daily_windows` sin modificar las
+migraciones previas. `alembic upgrade head` funciona desde una base vacía o desde
+cualquiera de esos heads. Aplica solo las ramas pendientes: un calendario ya
+migrado por 0009 conserva fechas y generaciones. 0009 no reconstruye el calendario
+horario al hacer downgrade. Un rollback de aplicación requiere revisar su política
+antes de reactivar el scheduler; no ejecutar downgrades ni migraciones productivas
+como parte de esta reconciliación. El candidato se verifica únicamente con bases
+locales desechables y CI; esto no acredita despliegue ni comportamiento merchant.
+
 
 ## Alta masiva de libros
 
@@ -257,10 +273,8 @@ Variables nuevas del runtime de scraping:
 - `SCRAPING_BROWSER_SOLVE_CLOUDFLARE`
 - `SCRAPING_BROWSER_REAL_CHROME`
 
-El scheduler usa `SCHEDULER_SCRAPE_INTERVAL_HOURS` (6 horas por defecto).
-Para probar cada minuto, configura `0.016666666666666666` en `secrets/.env`.
-Tras cambiarlo con Docker, ejecuta `docker compose up -d --force-recreate bsentinel`
-para cargar el nuevo intervalo. Cada arranque inicia la espera hasta el primer ciclo.
+El scheduler usa ventanas absolutas en `America/Bogota`: **08:00/17:00**, **08:20/17:20** y **08:40/17:40** por cohorte (dos revisiones diarias). Los campos de intervalo/tick legacy no cambian esta política. AWS WAF CAPTCHA/challenge pausa únicamente la tienda por `SCRAPING_BLOCK_COOLDOWN_MINUTES=60`; el estado SQL sobrevive reinicios y rollback del catálogo. Aplicar `alembic upgrade head` hasta el único head `0010_merge_audit_scraping` antes de arrancar el candidato; no rebasar calendarios en cada restart. Revisiones manuales/creación inicial siguen permitidas salvo pausa. Ver [calendario, pausa y rollout](docs/scraping-schedule.md).
+Cada cohorte dispone de 20 minutos de trabajo (08–09 y 17–18, límite exclusivo), pero nuevos lotes sólo inician dentro de los primeros 120 segundos de su slot; cron conserva misfire grace de 119 s. Reiniciar no reproduce un slot perdido. No comienza HTTP/retry después del límite, aunque requests ya admitidos pueden completar.
 
 ## Testing 🧪
 

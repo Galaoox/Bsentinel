@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from patchright.async_api import Error as BrowserError
 from scrapling.fetchers import AsyncStealthySession
+
+from bsentinel.exceptions import ScrapingError
+from bsentinel.infrastructure.scraping.sanitization import sanitize_proxy_credentials
 
 
 class StealthBrowserSession:
@@ -56,7 +60,13 @@ class StealthBrowserSession:
     async def fetch(self, url: str):
         if self._session is None:
             raise RuntimeError("Stealth browser session is not initialized")
-        return await self._session.fetch(url)
+        try:
+            return await self._session.fetch(url)
+        except (BrowserError, TimeoutError) as exc:
+            raise ScrapingError(
+                sanitize_proxy_credentials(str(exc)), reason="fetch_failed",
+                diagnostics={"error_type": type(exc).__name__},
+            ) from exc
 
     @property
     def is_started(self) -> bool:

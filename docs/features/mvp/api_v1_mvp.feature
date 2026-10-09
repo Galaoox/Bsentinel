@@ -30,6 +30,19 @@ Feature: API v1 MVP endpoints
     And la respuesta incluye "site"
     And la respuesta incluye "status"
 
+  Scenario: Crear libro desde URL con alias de dominio
+    Given una tienda canónica existente para "www.buscalibre.com.co"
+    When envío una petición POST autenticada a "/api/v1/catalog/books" con una URL de "buscalibre.com.co"
+    Then recibo estado 201 con "site" igual a "www.buscalibre.com.co"
+    And la relación almacena la URL con el dominio canónico y conserva ruta y parámetros
+
+  Scenario: Crear lote con alias conserva la URL de entrada
+    Given URL con y sin "www" de tiendas soportadas
+    When envío una petición POST autenticada a "/api/v1/catalog/books/bulk" con "urls"
+    Then recibo estado 201
+    And cada item conserva su URL original y devuelve el dominio canónico en "site"
+    And repetir el mismo ISBN con y sin "www" para una tienda devuelve 409 sin persistencia parcial
+
   Scenario: Crear un lote atómico conservando el orden
     Given dos URL soportadas con el mismo ISBN en tiendas diferentes
     When envío una petición POST autenticada a "/api/v1/catalog/books/bulk" con "urls"

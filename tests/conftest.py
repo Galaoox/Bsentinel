@@ -16,14 +16,86 @@ from alembic import command
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
+
+def pytest_configure(config):
+    import os
+
+    if os.environ.get("REQUIRE_TEST_POSTGRES") == "1":
+        missing = [name for name in ("BULK_TEST_POSTGRES_URL", "SCHEDULE_TEST_POSTGRES_URL")
+                   if not os.environ.get(name)]
+        if missing:
+            raise pytest.UsageError("Mandatory PostgreSQL test URLs missing: " + ", ".join(missing))
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    import os
+
+    report = (yield).get_result()
+    if os.environ.get("REQUIRE_TEST_POSTGRES") == "1" and report.skipped:
+        report.outcome = "failed"
+        report.longrepr = "Mandatory PostgreSQL pass cannot skip: " + item.nodeid
+
+@pytest.fixture
+async def schedule_db(tmp_path):
+    import os
+    from datetime import UTC
+
+    from sqlalchemy import text
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from bsentinel.infrastructure.persistence.sqlalchemy.base import Base
+    from bsentinel.infrastructure.persistence.sqlalchemy.models import BookModel, StoreModel
+    url = os.environ.get("SCHEDULE_TEST_POSTGRES_URL")
+    admin = None
+    if url:
+        parsed = make_url(url)
+        assert parsed.host == "127.0.0.1" and parsed.port != 5432 and parsed.database == "bsentinel_schedule_test"
+        schema = "schedule_" + uuid4().hex
+        admin = create_async_engine(url)
+        async with admin.begin() as conn:
+            await conn.execute(text(f"CREATE SCHEMA {schema}"))
+        engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
+    else:
+        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path}/schedule.db')
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        now = datetime(2026, 10, 8, tzinfo=UTC)
+        store = StoreModel(id=str(uuid4()), name='fixture', domain='fixture.invalid', country_code='CO', created_at=now)
+        book = BookModel(id=str(uuid4()), title='fixture', created_at=now)
+        session.add_all([store, book])
+        await session.commit()
+        ids = (book.id, store.id)
+    try:
+        yield factory, ids
+    finally:
+        await engine.dispose()
+        if admin is not None:
+            async with admin.begin() as conn:
+                await conn.execute(text(f"DROP SCHEMA {schema} CASCADE"))
+            await admin.dispose()
+
+
+
 class FakeConfiguredScraper:
+    async def extract_product(self, store, product_url: str):
+        from bsentinel.application.ports.external import ProductExtraction
+        return ProductExtraction(await self.extract_book_details(store, product_url),
+                                 await self.scrape_book(store, product_url))
+
     async def extract_book_details(self, store, product_url: str):
+        from urllib.parse import urlsplit
+
+        product_path = urlsplit(product_url).path
         slug = product_url.rstrip("/").split("/")[-1]
         title = slug.replace("-isbn-", " ").replace("-", " ").title()
         isbn = None
         marker = "isbn-"
         if marker in product_url:
-            isbn = product_url.split(marker, 1)[1].split("/")[0].split("-")[0]
+            isbn = product_path.split(marker, 1)[1].split("/")[0].split("-")[0]
         return type(
             "BookDetails",
             (),

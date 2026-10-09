@@ -86,6 +86,22 @@ def test_create_book_and_list_flow(client):
     assert listed[0]["title"] == "Libro El Principito 9780156012195"
 
 
+def test_create_book_accepts_domain_alias_and_preserves_canonical_relation_url(client):
+    headers = login_headers(client)
+    payload = {
+        "url": "https://buscalibre.com.co/libro-alias-isbn-9780156012195?ref=affiliate%2Fid"
+    }
+
+    response = client.post("/api/v1/catalog/books", json=payload, headers=headers)
+
+    assert response.status_code == 201
+    assert response.json()["site"] == "www.buscalibre.com.co"
+    detail = client.get(
+        f"/api/v1/catalog/books/{response.json()['book_id']}", headers=headers
+    ).json()
+    assert detail["stores"][0]["domain"] == "www.buscalibre.com.co"
+
+
 def test_create_panamericana_book(client):
     payload = {
         "url": "https://www.panamericana.com.co/el-metal-perdido-isbn-9788410466456/p"

@@ -1,6 +1,7 @@
 import importlib
 import json
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import AsyncExitStack
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -20,29 +21,17 @@ root_app_module = importlib.import_module("bsentinel.infrastructure.api.root_app
 @pytest.mark.asyncio
 async def test_run_scraping_batch_finishes_sql_session_before_returning(monkeypatch):
     commits = []
-    relation = SimpleNamespace(id='relation', book_id='book')
-    @asynccontextmanager
-    async def read_session():
-        yield object()
-    @asynccontextmanager
-    async def transaction():
+    async def scope():
         yield object()
         commits.append(True)
-    class Factory:
-        def __call__(self):
-            return read_session()
-        def begin(self):
-            return transaction()
-    repository = SimpleNamespace(list_all=AsyncMock(return_value=[relation]),
-                                 list_for_book=AsyncMock(return_value=[relation]))
-    scraping = SimpleNamespace(relations=repository, scrape_active_relation=AsyncMock(return_value=True))
-    monkeypatch.setattr(root_app_module.settings, "persistence_backend", "sql")
-    monkeypatch.setattr(root_app_module, "get_session_factory", Factory)
-    monkeypatch.setattr(root_app_module, "SQLRelationRepository", lambda session: repository)
-    monkeypatch.setattr(root_app_module, "_build_sql_services", lambda session: {"scraping": scraping})
-
-    assert await root_app_module.run_scraping_batch() == 1
+    scraping = SimpleNamespace(relations=SimpleNamespace(list_due=AsyncMock(return_value=[])))
+    monkeypatch.setattr(root_app_module.settings, 'persistence_backend', 'sql')
+    monkeypatch.setattr(root_app_module, 'session_scope', scope)
+    monkeypatch.setattr(root_app_module, '_build_sql_services', lambda session: {'scraping': scraping})
+    monkeypatch.setattr(root_app_module.scraping_batch, 'clock', lambda: datetime(2026, 10, 8, 13, tzinfo=UTC))
+    assert await root_app_module.run_scraping_batch() == 0
     assert commits == [True]
+    scraping.relations.list_due.assert_awaited_once()
 
 
 class RuntimeStub:
@@ -211,7 +200,7 @@ async def test_lifespan_builds_selected_runtime_and_manages_lifecycle(monkeypatc
     monkeypatch.setattr(
         reloaded_module.scheduler,
         "start",
-        lambda *, interval_hours: scheduler_calls.append(("start", interval_hours)),
+        lambda *, tick_minutes: scheduler_calls.append(("start", tick_minutes)),
     )
     monkeypatch.setattr(
         reloaded_module.scheduler,
@@ -225,10 +214,10 @@ async def test_lifespan_builds_selected_runtime_and_manages_lifecycle(monkeypatc
         assert runtime.start_calls == 1
         assert reloaded_module.scraper_client._session is runtime
         assert reloaded_module.root_app.state.scraping_runtime is runtime
-        assert scheduler_calls == [("start", reloaded_module.settings.scheduler_scrape_interval_hours)]
+        assert scheduler_calls == [("start", reloaded_module.settings.scheduler_scrape_tick_minutes)]
 
     assert runtime.close_calls == 1
     assert scheduler_calls == [
-        ("start", reloaded_module.settings.scheduler_scrape_interval_hours),
+        ("start", reloaded_module.settings.scheduler_scrape_tick_minutes),
         ("shutdown", None),
     ]

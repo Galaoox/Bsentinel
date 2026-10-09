@@ -20,7 +20,7 @@ def test_build_scraping_runtime_defaults_to_http():
 
     runtime = build_scraping_runtime(settings)
 
-    assert isinstance(runtime, HttpFetcherSession)
+    assert isinstance(runtime.backend, HttpFetcherSession)
     assert runtime.effective_config == {
         "profile": "chrome_stable",
         "timeout": 20,
@@ -42,7 +42,7 @@ def test_build_scraping_runtime_uses_http_profile_defaults_when_overrides_are_mi
 
     runtime = build_scraping_runtime(settings)
 
-    assert isinstance(runtime, HttpFetcherSession)
+    assert isinstance(runtime.backend, HttpFetcherSession)
     assert runtime.effective_config == {
         "profile": "firefox_stable",
         "timeout": 30,
@@ -68,11 +68,27 @@ def test_build_scraping_runtime_uses_browser_when_explicitly_configured():
 
     runtime = build_scraping_runtime(settings)
 
-    assert isinstance(runtime, StealthBrowserSession)
+    assert isinstance(runtime.backend, StealthBrowserSession)
 
 
 def test_build_scraping_runtime_rejects_invalid_runtime():
     settings = SimpleNamespace(scraping_runtime="stealth")
 
     with pytest.raises(ValueError, match="Invalid scraping runtime"):
+        build_scraping_runtime(settings)
+
+
+def test_browser_with_configured_http_proxy_is_rejected_without_constructing_browser(monkeypatch):
+    from bsentinel.infrastructure.scraping import runtime_factory
+
+    def forbidden_browser(**kwargs):
+        pytest.fail("Browser constructed despite unsupported configured proxy")
+
+    monkeypatch.setattr(runtime_factory, "StealthBrowserSession", forbidden_browser)
+    settings = SimpleNamespace(scraping_runtime="browser", scraping_http_proxy="http://proxy.fixture.invalid:8080",
+                               scraping_browser_headless=True, scraping_browser_timeout_ms=3000,
+                               scraping_browser_max_pages=1, scraping_browser_disable_resources=True,
+                               scraping_browser_network_idle=False, scraping_browser_solve_cloudflare=False,
+                               scraping_browser_real_chrome=False)
+    with pytest.raises(ValueError, match="Browser runtime does not support the configured proxy"):
         build_scraping_runtime(settings)

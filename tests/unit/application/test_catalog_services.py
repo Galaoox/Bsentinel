@@ -17,11 +17,21 @@ class FakeMetadataProvider:
 
 
 class FakeScraper:
+    async def extract_product(self, store, product_url: str):
+        from datetime import UTC, datetime
+
+        from bsentinel.application.ports.external import ProductExtraction
+        result = await self.scrape_book(store, product_url)
+        result.checked_at = datetime.now(UTC)
+        return ProductExtraction(await self.extract_book_details(store, product_url), result)
+
     def __init__(self) -> None:
         self.calls = 0
+        self.urls = []
 
     async def extract_book_details(self, store, product_url: str):
         self.calls += 1
+        self.urls.append(product_url)
         if "missing-isbn" in product_url:
             return type("BookDetails", (), {"title": "Broken Book", "authors": ["Unknown"], "isbn": None})()
         return type(
@@ -91,6 +101,69 @@ async def test_catalog_command_rejects_inactive_buscalibre_store_without_scrapin
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("alias", "canonical"),
+    [
+        ("buscalibre.com.co", "www.buscalibre.com.co"),
+        ("panamericana.com.co", "www.panamericana.com.co"),
+    ],
+)
+async def test_catalog_command_resolves_store_alias_and_preserves_url_components(alias, canonical):
+    storage = InMemoryStore()
+    scraper = FakeScraper()
+    books = InMemoryBookRepository(storage)
+    relations = InMemoryRelationRepository(storage)
+    stores = InMemoryStoreRepository(storage)
+    service = CatalogCommandService(
+        books=books,
+        stores=stores,
+        relations=relations,
+        metadata=FakeMetadataProvider(),
+        scraper=scraper,
+    )
+
+    original_url = f"https://{alias}/libro/isbn-123?ref=affiliate%2Fid&isbn=9780134494166#details"
+    book, relation, site, _ = await service.create_book_from_url(original_url)
+
+    expected_url = f"https://{canonical}/libro/isbn-123?ref=affiliate%2Fid&isbn=9780134494166#details"
+    assert site == canonical
+    assert scraper.urls == [expected_url]
+    assert relation.product_url == expected_url
+    assert relation.store_id == (await stores.get_by_domain(canonical)).id
+    assert book.isbn == "9780134494166"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://buscalibre.com.co.evil.example/book",
+        "https://evilbuscalibre.com.co/book",
+        "https://shop.buscalibre.com.co/book",
+        "https://user:pass@buscalibre.com.co/book",
+        "https://buscalibre.com.co:443/book",
+        "https://[buscalibre.com.co/book",
+        "ftp://buscalibre.com.co/book",
+    ],
+)
+async def test_catalog_command_rejects_unsafe_store_aliases_without_scraping(url):
+    storage = InMemoryStore()
+    scraper = FakeScraper()
+    service = CatalogCommandService(
+        books=InMemoryBookRepository(storage),
+        stores=InMemoryStoreRepository(storage),
+        relations=InMemoryRelationRepository(storage),
+        metadata=FakeMetadataProvider(),
+        scraper=scraper,
+    )
+
+    with pytest.raises((ValidationError, UnsupportedStoreError)):
+        await service.create_book_from_url(url)
+
+    assert scraper.calls == 0
+
+
+@pytest.mark.asyncio
 async def test_catalog_command_keeps_seed_store_relation_for_buscalibre_books():
     storage = InMemoryStore()
     scraper = FakeScraper()
@@ -106,7 +179,7 @@ async def test_catalog_command_keeps_seed_store_relation_for_buscalibre_books():
         scraper=scraper,
     )
 
-    book, relation, site = await service.create_book_from_url(
+    book, relation, site, _ = await service.create_book_from_url(
         "https://www.buscalibre.com.co/libro-clean-architecture"
     )
 
@@ -130,10 +203,10 @@ async def test_catalog_command_links_same_isbn_to_panamericana_without_duplicate
         scraper=scraper,
     )
 
-    buscalibre_book, _, _ = await service.create_book_from_url(
+    buscalibre_book, _, _, _ = await service.create_book_from_url(
         "https://www.buscalibre.com.co/libro-clean-architecture"
     )
-    panamericana_book, relation, site = await service.create_book_from_url(
+    panamericana_book, relation, site, _ = await service.create_book_from_url(
         "https://www.panamericana.com.co/clean-architecture/p"
     )
 
@@ -175,7 +248,7 @@ async def test_catalog_command_reuses_existing_book_by_isbn_and_rejects_duplicat
         scraper=FakeScraper(),
     )
 
-    book, _, _ = await service.create_book_from_url("https://www.buscalibre.com.co/libro-clean-architecture")
+    book, _, _, _ = await service.create_book_from_url("https://www.buscalibre.com.co/libro-clean-architecture")
 
     with pytest.raises(EntityAlreadyExistsError):
         await service.create_book_from_url("https://www.buscalibre.com.co/libro-clean-architecture-duplicate")

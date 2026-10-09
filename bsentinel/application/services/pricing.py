@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from math import ceil
 from uuid import UUID
 
@@ -12,7 +13,9 @@ from bsentinel.application.ports import (
     ScraperPort,
     StoreRepositoryPort,
 )
-from bsentinel.domain.models import BookStoreRelation, PriceHistoryRecord
+from bsentinel.application.ports.external import ScrapeResultPort
+from bsentinel.domain.models import BookStoreRelation, PriceHistoryRecord, now_utc
+from bsentinel.domain.scraping_schedule import initial_check
 from bsentinel.exceptions import EntityDoesNotExistError, ScrapingError, UnsupportedStoreError
 
 
@@ -27,14 +30,21 @@ class ScrapingService:
         relations: RelationRepositoryPort,
         history: HistoryRepositoryPort,
         scraper: ScraperPort,
+        refresh_relation: Callable[[BookStoreRelation], Awaitable[None]] | None = None,
     ) -> None:
         self.books = books
         self.stores = stores
         self.relations = relations
         self.history = history
         self.scraper = scraper
+        self.refresh_relation = refresh_relation
 
-    async def scrape_relation(self, relation: BookStoreRelation) -> None:
+    async def scrape_relation(self, relation: BookStoreRelation, *, initial: bool = False) -> None:
+        # Only creation callers may scrape inside their uncommitted transaction.
+        # last_checked says nothing about whether the relation is persisted.
+        if not initial and self.refresh_relation is not None:
+            await self.refresh_relation(relation)
+            return
         store = await self.stores.get(relation.store_id)
         if not store:
             raise UnsupportedStoreError("Store not found")
@@ -44,9 +54,15 @@ class ScrapingService:
             raise UnsupportedStoreError("Store is inactive")
 
         result = await self.scraper.scrape_book(store, relation.product_url)
+        await self.record_result(relation, result)
+
+    async def record_result(self, relation: BookStoreRelation, result: ScrapeResultPort) -> None:
+        """Persist the caller's extraction, without fetching or retaining a page."""
         relation.current_price = result.price
         relation.status = result.status
         relation.last_checked = result.checked_at
+        if relation.scrape_group is not None:
+            relation.next_check_at = initial_check(relation.scrape_group, now_utc(), result.checked_at)
         await self.relations.save(relation)
 
         record = PriceHistoryRecord(

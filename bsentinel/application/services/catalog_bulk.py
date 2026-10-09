@@ -17,8 +17,8 @@ class CatalogBulkService:
         async with self.transaction:
             for index, url in enumerate(urls):
                 try:
-                    book, relation, domain = await self.command.create_book_from_url(url)
-                    await self.scraping.scrape_relation(relation)
+                    book, relation, domain, result = await self.command.create_book_from_url(url)
+                    await self.scraping.record_result(relation, result)
                     await self.transaction.flush()
                 except StandardError as exc:
                     raise BulkItemError(exc, index, url) from exc

@@ -12,22 +12,51 @@ def headers(client):
     return {'Authorization': 'Bearer ' + response.json()['access_token']}
 
 
-def test_bulk_creates_ordered_relations_shared_isbn_and_history(client):
+def test_bulk_accepts_aliases_and_returns_canonical_sites(client):
     auth = headers(client)
-    urls = [URL, URL.replace('www.buscalibre.com.co', 'www.panamericana.com.co')]
-    response = client.post(ENDPOINT, json={'urls': urls}, headers=auth)
+    urls = [
+        "https://buscalibre.com.co/book-isbn-9780134494166?ref=affiliate%2Fid",
+        "https://panamericana.com.co/book-isbn-9780132350884/p",
+    ]
+
+    response = client.post(ENDPOINT, json={"urls": urls}, headers=auth)
+
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body['meta'] == {'total': 2}
-    assert [item['url'] for item in body['items']] == urls
-    assert [item['index'] for item in body['items']] == [0, 1]
-    assert body['items'][0]['book_id'] == body['items'][1]['book_id']
-    book_id = body['items'][0]['book_id']
-    detail = client.get('/api/v1/catalog/books/' + book_id, headers=auth).json()
-    assert len(detail['stores']) == 2
-    assert all(store['price'] == 42.5 for store in detail['stores'])
-    history = client.get('/api/v1/pricing/books/' + book_id + '/history', headers=auth).json()
-    assert history['meta']['total'] == 2
+    assert [item["url"] for item in body["items"]] == urls
+    assert [item["site"] for item in body["items"]] == [
+        "www.buscalibre.com.co",
+        "www.panamericana.com.co",
+    ]
+
+
+def test_alias_duplicate_returns_409_and_rolls_back(client):
+    auth = headers(client)
+    urls = [URL, URL.replace("www.buscalibre.com.co", "buscalibre.com.co")]
+
+    response = client.post(ENDPOINT, json={"urls": urls}, headers=auth)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["details"] == {"index": 1, "url": urls[1]}
+    assert client.get("/api/v1/catalog/books", headers=auth).json()["meta"]["total"] == 0
+
+
+def test_bulk_creates_ordered_relations_shared_isbn_and_history(client):
+    auth = headers(client)
+    urls = [URL, URL.replace("www.buscalibre.com.co", "www.panamericana.com.co")]
+    response = client.post(ENDPOINT, json={"urls": urls}, headers=auth)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["meta"] == {"total": 2}
+    assert [item["url"] for item in body["items"]] == urls
+    assert [item["index"] for item in body["items"]] == [0, 1]
+    assert body["items"][0]["book_id"] == body["items"][1]["book_id"]
+    book_id = body["items"][0]["book_id"]
+    detail = client.get("/api/v1/catalog/books/" + book_id, headers=auth).json()
+    assert len(detail["stores"]) == 2
+    assert all(store["price"] == 42.5 for store in detail["stores"])
+    history = client.get("/api/v1/pricing/books/" + book_id + "/history", headers=auth).json()
+    assert history["meta"]["total"] == 2
 
 
 @pytest.mark.parametrize("bad_url,code,status", [

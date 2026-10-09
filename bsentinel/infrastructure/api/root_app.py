@@ -7,6 +7,7 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
@@ -28,6 +29,8 @@ from bsentinel.application.services import (
     SystemQueryService,
 )
 from bsentinel.application.services.catalog_bulk import CatalogBulkService
+from bsentinel.application.services.scraping_batch import ScrapingBatch
+from bsentinel.application.services.traffic_context import traffic_context
 from bsentinel.exceptions import (
     AuthenticationError,
     BulkItemError,
@@ -40,6 +43,7 @@ from bsentinel.exceptions import (
     ValidationError,
 )
 from bsentinel.infrastructure.api.v1 import build_v1_router
+from bsentinel.infrastructure.api.v1.traffic import build_traffic_router
 from bsentinel.infrastructure.openlibrary import OpenLibraryClient
 from bsentinel.infrastructure.persistence.in_memory import (
     InMemoryArchiveJobRepository,
@@ -51,6 +55,7 @@ from bsentinel.infrastructure.persistence.in_memory import (
     InMemoryStoreRepository,
 )
 from bsentinel.infrastructure.persistence.in_memory.transactions import InMemoryCatalogTransaction
+from bsentinel.infrastructure.persistence.scraping_batch import RelationProcessor
 from bsentinel.infrastructure.persistence.sqlalchemy import (
     SQLArchiveJobRepository,
     SQLBookRepository,
@@ -60,11 +65,13 @@ from bsentinel.infrastructure.persistence.sqlalchemy import (
     SQLStoreRepository,
     session_scope,
 )
-from bsentinel.infrastructure.persistence.sqlalchemy.session import get_session_factory
 from bsentinel.infrastructure.persistence.sqlalchemy.transactions import SQLCatalogTransaction
+from bsentinel.infrastructure.persistence.store_blocks import SQLBlockPersistence
+from bsentinel.infrastructure.persistence.traffic import SQLTrafficRepository
 from bsentinel.infrastructure.scheduler import LocalScheduler
 from bsentinel.infrastructure.scraping import ConfiguredStoreScraper, build_scraping_runtime
 from bsentinel.infrastructure.scraping.sanitization import sanitize_proxy_observable
+from bsentinel.infrastructure.scraping.store_guard import MemoryBlockPersistence, StoreGuard
 from bsentinel.infrastructure.security import JWTTokenManager
 
 logger = logging.getLogger(__name__)
@@ -73,7 +80,26 @@ in_memory_store = InMemoryStore()
 metadata_client = OpenLibraryClient()
 scraping_runtime = build_scraping_runtime(settings)
 browser_session = scraping_runtime
+
+
+async def _persist_traffic(event):
+    if settings.persistence_backend == 'in_memory':
+        raise RuntimeError('Traffic requires SQL persistence')
+    async with asynccontextmanager(session_scope)() as session:
+        await SQLTrafficRepository(session).add(event)
+
+
+if hasattr(getattr(scraping_runtime, 'backend', None), 'traffic_sink'):
+    scraping_runtime.backend.traffic_sink = _persist_traffic
+
+store_guard = StoreGuard(
+    MemoryBlockPersistence() if settings.persistence_backend == "in_memory"
+    else SQLBlockPersistence(lambda: asynccontextmanager(session_scope)()),
+    cooldown_minutes=settings.scraping_block_cooldown_minutes,
+)
+
 scraper_client = ConfiguredStoreScraper(
+    store_guard=store_guard,
     browser_session=scraping_runtime,
     transient_retry_attempts=settings.scraping_http_transient_retry_attempts,
     transient_retry_delay_ms=settings.scraping_http_transient_retry_delay_ms,
@@ -133,6 +159,12 @@ async def get_optional_session() -> AsyncIterator[AsyncSession | None]:
         yield session
 
 
+async def get_traffic_repository(session=Depends(get_optional_session)):
+    if session is None:
+        raise HTTPException(503, 'Traffic reporting requires SQL persistence')
+    return SQLTrafficRepository(session)
+
+
 def _build_sql_services(session: AsyncSession) -> dict[str, Any]:
     books = SQLBookRepository(session)
     stores = SQLStoreRepository(session)
@@ -169,6 +201,7 @@ def _build_sql_services(session: AsyncSession) -> dict[str, Any]:
             relations=relations,
             history=history,
             scraper=scraper_client,
+            refresh_relation=lambda relation: _refresh_relation(relation),
         ),
         "pricing": PricingQueryService(
             books=books,
@@ -253,49 +286,48 @@ async def get_auth_service(
     return _build_sql_services(session)["auth"]
 
 
-async def run_scraping_batch() -> int:
+@asynccontextmanager
+async def _scraping_repositories():
     if settings.persistence_backend == "in_memory":
-        candidates = await relation_repository.list_all()
-        updated = 0
-        for candidate in candidates:
-            service = await get_catalog_bulk_service(None)
-            try:
-                async with service.transaction:
-                    relations = await service.scraping.relations.list_for_book(candidate.book_id)
-                    relation = next((item for item in relations if item.id == candidate.id), None)
-                    confirmed = relation is not None and await service.scraping.scrape_active_relation(relation)
-            except ScrapingService.recoverable_errors as exc:
-                _log_batch_skip(candidate, exc)
-                continue
-            updated += int(confirmed)
-        return updated
-
-    factory = get_session_factory()
-    async with factory() as session:
-        candidates = await SQLRelationRepository(session).list_all()
-    updated = 0
-    for candidate in candidates:
-        try:
-            async with factory.begin() as session:
-                services = _build_sql_services(session)
-                relations = await services["scraping"].relations.list_for_book(candidate.book_id)
-                relation = next((item for item in relations if item.id == candidate.id), None)
-                confirmed = relation is not None and await services["scraping"].scrape_active_relation(relation)
-        except ScrapingService.recoverable_errors as exc:
-            _log_batch_skip(candidate, exc)
-            continue
-        updated += int(confirmed)
-    return updated
+        # No HTTP occurs inside this optimistic, short context.
+        async with InMemoryCatalogTransaction(in_memory_store) as transaction:
+            working = transaction.working
+            yield SimpleNamespace(books=InMemoryBookRepository(working), stores=InMemoryStoreRepository(working), relations=InMemoryRelationRepository(working), history=InMemoryHistoryRepository(working))
+    else:
+        # Wrap the actual async generator: commit/rollback/close finish before exit.
+        async with asynccontextmanager(session_scope)() as session:
+            yield _build_sql_services(session)["scraping"]
 
 
-def _log_batch_skip(relation, exc) -> None:
-    logger.warning("Batch relation skipped", extra=sanitize_proxy_observable({
-        "book_id": str(relation.book_id), "relation_id": str(relation.id),
-        "store_id": str(relation.store_id), "error_type": type(exc).__name__,
-        "error_message": str(exc),
-        "scraping_reason": getattr(exc, "reason", None),
-        "scraping_diagnostics": getattr(exc, "diagnostics", {}),
-    }))
+async def _refresh_relation(relation):
+    from bsentinel.domain.models import now_utc
+    with traffic_context(scope='manual', relation_id=str(relation.id), operation_id=str(uuid.uuid4())):
+        await RelationProcessor(_scraping_repositories, scraper_client).process(relation, now_utc(), force=True)
+    async with _scraping_repositories() as repos:
+        current = await repos.relations.get(relation.id)
+    if current is not None:
+        relation.current_price = current.current_price
+        relation.status = current.status
+        relation.last_checked = current.last_checked
+        relation.next_check_at = current.next_check_at
+        relation.scrape_generation = current.scrape_generation
+
+
+async def _process_due_relation(candidate, cutoff):
+    return await RelationProcessor(_scraping_repositories, scraper_client).process(candidate, cutoff)
+
+
+async def _list_due_relations(cutoff, limit, after):
+    return await RelationProcessor(_scraping_repositories, scraper_client).list_page(cutoff, limit, after)
+
+
+scraping_batch = ScrapingBatch(_list_due_relations, _process_due_relation)
+
+
+async def run_scraping_batch() -> int:
+    summary = await scraping_batch.run()
+    logger.info("Scraping runtime budget", extra={"peak_fetches": getattr(scraping_runtime, "peak_active", None), "concurrency": settings.scraping_concurrency})
+    return summary.successful
 
 
 scheduler = LocalScheduler(run_scraping_batch)
@@ -307,14 +339,19 @@ async def lifespan(app: FastAPI):
     configure_logging()
     await scraping_runtime.start()
     app.state.scraping_runtime = scraping_runtime
-    scheduler.start(interval_hours=settings.scheduler_scrape_interval_hours)
+    scheduler.start(tick_minutes=settings.scheduler_scrape_tick_minutes)
+    logger.info("Scraping schedule ready", extra={
+        "timezone": "America/Bogota", "local_hours": "8,17", "cohort_minutes": "0,20,40",
+        "scrape_groups": 3, "concurrency": settings.scraping_concurrency, "daily_reviews": 2,
+        "block_cooldown_minutes": settings.scraping_block_cooldown_minutes,
+    })
     app.state.scheduler = scheduler
     if settings.persistence_backend == "in_memory":
         app.state.store = in_memory_store
     try:
         yield
     finally:
-        scheduler.shutdown()
+        await scheduler.aclose()
         await scraping_runtime.close()
 
 
@@ -372,7 +409,8 @@ async def add_request_id(request: Request, call_next):
     request.state.request_id = request_id
     token = set_request_id(request_id)
     try:
-        response = await call_next(request)
+        with traffic_context(scope='catalog', operation_id=request_id):
+            response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         return response
     finally:
@@ -517,6 +555,7 @@ async def root():
 
 
 root_app.include_router(common_router)
+root_app.include_router(build_traffic_router(get_traffic_repository, get_auth_service))
 root_app.include_router(
     build_v1_router(
         get_system_service,
