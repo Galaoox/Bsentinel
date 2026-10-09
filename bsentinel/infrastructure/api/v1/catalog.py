@@ -9,14 +9,14 @@ from fastapi import APIRouter, Depends, Query, status
 from bsentinel.application.services import (
     CatalogCommandService,
     CatalogQueryService,
-    ScrapingService,
 )
 from bsentinel.application.services.catalog_bulk import CatalogBulkService
+from bsentinel.exceptions import BulkItemError
 
 from .schemas import CreateBookRequest, CreateBooksBulkRequest, CreateBooksBulkResponse
 
 
-def build_catalog_router(get_command_service, get_query_service, get_scraping_service, get_bulk_service):
+def build_catalog_router(get_command_service, get_query_service, get_bulk_service):
     router = APIRouter(prefix="/catalog", tags=["catalog"])
 
     @router.post("/books/bulk", status_code=status.HTTP_201_CREATED,
@@ -34,21 +34,13 @@ def build_catalog_router(get_command_service, get_query_service, get_scraping_se
     @router.post("/books", status_code=status.HTTP_201_CREATED)
     async def create_book(
         payload: CreateBookRequest,
-        command_service: CatalogCommandService = Depends(get_command_service),
-        scraping_service: ScrapingService = Depends(get_scraping_service),
+        service: CatalogBulkService = Depends(get_bulk_service),
     ):
-        book, relation, store_domain, result = await command_service.create_book_from_url(payload.url)
-        await scraping_service.record_result(relation, result)
-
-        return {
-            "book_id": str(book.id),
-            "relation_id": str(relation.id),
-            "isbn": book.isbn,
-            "title": book.title,
-            "authors": book.authors,
-            "site": store_domain,
-            "status": relation.status,
-        }
+        try:
+            result = await service.create_books([payload.url])
+        except BulkItemError as exc:
+            raise exc.cause from exc
+        return {key: value for key, value in result["items"][0].items() if key not in {"index", "url"}}
 
     @router.get("/books")
     async def list_books(

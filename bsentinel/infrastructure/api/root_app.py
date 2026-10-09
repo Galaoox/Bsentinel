@@ -128,14 +128,6 @@ catalog_query_service = CatalogQueryService(
     stores=store_repository,
     relations=relation_repository,
 )
-scraping_service = ScrapingService(
-    books=book_repository,
-    stores=store_repository,
-    relations=relation_repository,
-    history=history_repository,
-    scraper=scraper_client,
-    refresh_relation=lambda relation: _refresh_relation(relation),
-)
 pricing_query_service = PricingQueryService(
     books=book_repository,
     stores=store_repository,
@@ -265,15 +257,6 @@ async def get_catalog_query_service(
         return catalog_query_service
     assert session is not None
     return _build_sql_services(session)["catalog_query"]
-
-
-async def get_scraping_service(
-    session: AsyncSession | None = Depends(get_optional_session),
-) -> ScrapingService:
-    if settings.persistence_backend == "in_memory":
-        return scraping_service
-    assert session is not None
-    return _build_sql_services(session)["scraping"]
 
 
 async def get_pricing_service(
@@ -578,7 +561,6 @@ root_app.include_router(
         get_system_service,
         get_catalog_command_service,
         get_catalog_query_service,
-        get_scraping_service,
         get_pricing_service,
         get_retention_service,
         get_auth_service,

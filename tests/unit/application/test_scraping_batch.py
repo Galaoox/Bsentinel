@@ -2,6 +2,8 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from bsentinel.exceptions import ScrapingError
+
 
 async def test_three_workers_process_hundreds_once_with_isolated_errors():
     from bsentinel.application.services.scraping_batch import ScrapingBatch
@@ -32,7 +34,7 @@ async def test_three_workers_process_hundreds_once_with_isolated_errors():
             await asyncio.sleep(0.001)
             seen.append(row.id)
             if row.id.int % 11 == 0:
-                raise RuntimeError("isolated fixture error")
+                raise ScrapingError("isolated fixture error")
             return "successful"
         finally:
             active -= 1
@@ -81,3 +83,40 @@ async def test_overlapping_batch_is_skipped_and_cancel_drains_workers():
         pass
     assert cancelled.is_set()
     assert not batch.running
+
+
+async def test_fatal_worker_cancels_producer_and_pending_work_before_more_requests():
+    import pytest
+
+    from bsentinel.application.services.scraping_batch import ScrapingBatch
+    from bsentinel.domain.models import BookStoreRelation
+
+    now = datetime(2026, 10, 8, 13, tzinfo=UTC)
+    rows = [BookStoreRelation(id=UUID(int=i), scrape_group=0, next_check_at=now)
+            for i in range(1, 30)]
+    pending = asyncio.Event()
+    cancelled = []
+    requested = []
+
+    async def page(cutoff, limit, after):
+        return rows if after is None else []
+
+    async def process(row, cutoff):
+        requested.append(row.id.int)
+        if row.id.int == 2:
+            await pending.wait()
+            raise RuntimeError("fatal worker fixture")
+        if row.id.int == 3:
+            pending.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.append(row.id.int)
+
+    batch = ScrapingBatch(page, process, clock=lambda: now)
+    with pytest.raises(ExceptionGroup) as errors:
+        await asyncio.wait_for(batch.run(), 2)
+    assert [type(exc) for exc in errors.value.exceptions] == [RuntimeError]
+    assert requested == [1, 2, 3]
+    assert set(cancelled) == {1, 3}
+    assert batch.peak_queue == 6 and not batch.running

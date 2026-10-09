@@ -10,9 +10,11 @@ from ipaddress import ip_address
 from urllib.parse import urlsplit
 
 from curl_cffi import CurlInfo
+from curl_cffi.curl import CurlError
 
 from bsentinel.application.services.traffic_context import attribution
 from bsentinel.domain.traffic import TrafficEvent
+from bsentinel.infrastructure.scraping.sanitization import sanitize_proxy_credentials
 from bsentinel.infrastructure.scraping.store_guard import check_periodic_admission, fetch_admission
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,12 @@ def instrument_transport(session, sink=discard_event):
             return response
         except asyncio.CancelledError:
             outcome = "cancelled"
+            raise
+        except CurlError as exc:
+            response = getattr(exc, "response", None)
+            # Scrapling logs/retries this same error; preserve code and response.
+            exc.args = tuple(sanitize_proxy_credentials(arg) if isinstance(arg, str) else arg
+                             for arg in exc.args)
             raise
         except Exception as exc:
             response = getattr(exc, "response", None)

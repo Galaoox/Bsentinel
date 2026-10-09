@@ -12,6 +12,7 @@ from uuid import UUID
 from bsentinel.application.ports import ScraperPort
 from bsentinel.domain.models import BookStoreRelation, PriceHistoryRecord, Store
 from bsentinel.domain.scraping_schedule import current_slot, initial_check, next_check
+from bsentinel.exceptions import ScrapingError, UnsupportedStoreError
 from bsentinel.infrastructure.scraping.store_guard import (
     check_periodic_admission,
     periodic_admission,
@@ -140,12 +141,13 @@ class RelationProcessor:
                         result = await self.scraper.scrape_book(store, relation.product_url)
                     finally:
                         periodic_admission.reset(token)
-            except Exception as exc:
+            except (ScrapingError, UnsupportedStoreError) as exc:
                 failed = True
                 fetch_error = exc
                 logger.warning(
                     "Scraping attempt failed",
-                    extra={"relation_id": str(relation.id), "error_type": type(exc).__name__},
+                    extra={"relation_id": str(relation.id), "error_type": type(exc).__name__,
+                           "scraping_reason": getattr(exc, "reason", None)},
                 )
             finished = self.clock()
             async with self.context() as repos:
@@ -180,7 +182,7 @@ class RelationProcessor:
                         )
                     )
                 await repos.relations.save(current)
-            # Context exit commits; SQL failures bubble to the worker and isolate this result.
+            # Context exit commits; SQL failures abort the batch without replaying its reservation.
             if force and fetch_error is not None:
                 raise fetch_error
             reason = getattr(fetch_error, "reason", None)

@@ -24,10 +24,12 @@ from bsentinel.infrastructure.scraping.configured import ConfiguredStoreScraper
 from bsentinel.infrastructure.scraping.http_fetcher import HttpFetcherSession
 from bsentinel.infrastructure.scraping.rules import build_default_buscalibre_rules
 
+ISBNS = {1: '9780134494166', 2: '9780132350884', 3: '9780321125217'}
+
 
 def html(index):
     product = {'@type': 'Product', 'name': f'Title {index}',
-               'isbn': f'978032114653{index}', 'author': [{'name': f'Author {index}'}],
+               'isbn': ISBNS[index], 'author': [{'name': f'Author {index}'}],
                'offers': {'price': 45000 + index, 'lowPrice': 45000 + index,
                           'availability': 'http://schema.org/InStock'}}
     return ('<html><script type="application/ld+json">' + json.dumps(product) + '</script></html>').encode()
@@ -103,7 +105,7 @@ async def test_three_concurrent_creations_keep_values_and_traffic_isolated(monke
     for index, (book, relation, result) in enumerate(created, start=1):
         assert book.title == f'Title {index}'
         assert book.authors == [f'Author {index}']
-        assert book.isbn == f'978032114653{index}'
+        assert book.isbn == ISBNS[index]
         assert book.publisher == 'OpenLibrary fixture'
         assert relation.current_price == 45000 + index
         assert relation.last_checked == result.checked_at
@@ -118,7 +120,7 @@ async def test_three_concurrent_creations_keep_values_and_traffic_isolated(monke
         assert all(e.domain == relation.product_url.split('/')[2] for e in attempts)
     assert counts == {url: 2 if retry else 1 for url in urls}
     assert all(proxy == 'http://fixture.invalid:8080' for _, proxy in requests)
-    assert Counter(metadata.isbns) == {f'978032114653{i}': 1 for i in range(1, 4)}
+    assert Counter(metadata.isbns) == dict.fromkeys(ISBNS.values(), 1)
     assert attribution.get() == {}
 
 

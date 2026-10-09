@@ -16,7 +16,7 @@ from bsentinel.infrastructure.persistence.in_memory import (
 )
 from bsentinel.infrastructure.persistence.in_memory.transactions import InMemoryCatalogTransaction
 
-URL = 'https://www.buscalibre.com.co/book-isbn-1'
+URL = 'https://www.buscalibre.com.co/book-isbn-9780134494166'
 
 
 class Scraper:
@@ -26,7 +26,8 @@ class Scraper:
                                  await self.scrape_book(store, url))
 
     async def extract_book_details(self, store, url):
-        return SimpleNamespace(title=url, authors=['Fixture Author'], isbn=url.split('isbn-')[1])
+        from urllib.parse import urlparse
+        return SimpleNamespace(title=url, authors=['Fixture Author'], isbn=urlparse(url).path.split('isbn-')[1])
 
     async def scrape_book(self, store, url):
         return SimpleNamespace(price=42.5, status='activo', checked_at=datetime.now(UTC))
@@ -65,8 +66,8 @@ async def test_bulk_service_orders_items_and_reuses_isbn():
 async def test_bulk_service_preserves_alias_input_and_returns_canonical_site():
     store = InMemoryStore()
     urls = [
-        'https://buscalibre.com.co/book-isbn-1?ref=affiliate%2Fid',
-        'https://panamericana.com.co/book-isbn-2',
+        'https://buscalibre.com.co/book-isbn-9780134494166?ref=affiliate%2Fid',
+        'https://panamericana.com.co/book-isbn-9780132350884',
     ]
 
     result = await service(store).create_books(urls)
@@ -77,14 +78,14 @@ async def test_bulk_service_preserves_alias_input_and_returns_canonical_site():
         'www.panamericana.com.co',
     ]
     assert [relation.product_url for relation in store.relations.values()] == [
-        'https://www.buscalibre.com.co/book-isbn-1?ref=affiliate%2Fid',
-        'https://www.panamericana.com.co/book-isbn-2',
+        'https://www.buscalibre.com.co/book-isbn-9780134494166?ref=affiliate%2Fid',
+        'https://www.panamericana.com.co/book-isbn-9780132350884',
     ]
 
 
 async def test_bulk_service_duplicate_alias_aborts_without_partial_state():
     store = InMemoryStore()
-    urls = [URL, 'https://buscalibre.com.co/book-isbn-1']
+    urls = [URL, 'https://buscalibre.com.co/book-isbn-9780134494166']
 
     with pytest.raises(BulkItemError) as exc:
         await service(store).create_books(urls)
@@ -109,16 +110,16 @@ async def test_second_item_failure_preserves_previous_state(failure):
     previous = (dict(store.books), dict(store.relations), dict(store.history))
     class FailingMetadata(Metadata):
         async def enrich_by_isbn(self, isbn):
-            if isbn == '3':
+            if isbn == '9780132350884':
                 raise RuntimeError('Metadata infrastructure unavailable')
             return await super().enrich_by_isbn(isbn)
     class FailingScraper(Scraper):
         async def scrape_book(self, store, url):
-            if url.endswith('3'):
+            if url.endswith('9780132350884'):
                 raise ScrapingError('Scraping unavailable')
             return await super().scrape_book(store, url)
     kwargs = {'metadata': FailingMetadata()} if failure == 'metadata' else {'scraper': FailingScraper()}
     expected = RuntimeError if failure == 'metadata' else BulkItemError
     with pytest.raises(expected):
-        await service(store, **kwargs).create_books([URL.replace('isbn-1', 'isbn-2'), URL.replace('isbn-1', 'isbn-3')])
+        await service(store, **kwargs).create_books([URL.replace('9780134494166', '9780321125217'), URL.replace('9780134494166', '9780132350884')])
     assert (store.books, store.relations, store.history) == previous

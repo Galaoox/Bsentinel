@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from bsentinel.application.services.traffic_context import traffic_context
 from bsentinel.domain.models import BookStoreRelation
 from bsentinel.domain.scraping_schedule import starting_group
+from bsentinel.exceptions import ScrapingError, UnsupportedStoreError
 
 logger = logging.getLogger(__name__)
 
@@ -99,13 +100,14 @@ class ScrapingBatch:
                             with traffic_context(scope='periodic', batch_id=summary.batch_id,
                                                  relation_id=str(row.id), operation_id=str(uuid4())):
                                 outcome = await self.process(row, cutoff)
-                        except Exception as exc:
+                        except (ScrapingError, UnsupportedStoreError) as exc:
                             # Never log exception text/URLs: HTTP/SQL errors may contain credentials.
                             logger.warning(
                                 "Scraping relation failed",
                                 extra={
                                     "relation_id": str(row.id),
                                     "error_type": type(exc).__name__,
+                                    "scraping_reason": getattr(exc, "reason", None),
                                 },
                             )
                             outcome = "failed"

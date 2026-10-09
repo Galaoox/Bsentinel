@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from curl_cffi.curl import CurlError
 from scrapling.fetchers import FetcherSession
 
 from bsentinel.exceptions import ScrapingError
@@ -68,13 +69,11 @@ class HttpFetcherSession:
                 # overriding the session default. Never rely on that default.
                 request_options = {"proxy": self._config["proxy"]} if self._config["proxy"] else {}
                 return await session.get(url, **request_options)
-        except ScrapingError:
-            # Admission errors are already safe and carry typed reason/UTC metadata.
-            # They are not CurlError and must not enter Scrapling's network retry loop.
-            raise
-        except Exception as exc:
-            sanitized_message = sanitize_proxy_credentials(str(exc))
-            raise type(exc)(sanitized_message) from exc
+        except (CurlError, TimeoutError) as exc:
+            raise ScrapingError(
+                sanitize_proxy_credentials(str(exc)), reason="fetch_failed",
+                diagnostics={"error_type": type(exc).__name__},
+            ) from exc
 
     @property
     def is_started(self) -> bool:

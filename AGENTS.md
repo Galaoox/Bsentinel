@@ -7,7 +7,7 @@
   - `bsentinel/application/`: use cases, orchestration, repository/service contracts.
   - `bsentinel/infrastructure/`: adapters and integrations (FastAPI, scraper, scheduler, OpenLibrary).
   - `bsentinel/infrastructure/api/`: app bootstrap, routers (`/health`, `/api/v1/...`).
-- Config/environment: `bsentinel/_settings.py`, `bsentinel/settings/`.
+- Config/environment: `bsentinel/_settings.py`.
 - Tests: `tests/unit/` and `tests/integration/`.
 - Product specs/docs: `docs/`, `docs/features/mvp/`, and `docs/features/roadmap/`.
 

@@ -199,3 +199,38 @@ Verify `JWT_SECRET_KEY`, `JWT_ALGORITHM`, and token expiration values in `secret
 - `Readme.md`
 - `PROGRESS.md`
 - `docs/README.md`
+
+## Data and transaction behavior
+
+Back up the database before `make migrate`. Revision `0007_normalize_isbn` only
+normalizes valid, unambiguous ISBN groups (including deleted books), and logs
+IDs/counts for invalid, empty and conflicting values. Collisions and custom
+extraction rules remain intact. Downgrade cannot recover previous spelling;
+restore the backup to recover it. See [migration policy](Readme.md#migración-parcial-de-isbn).
+
+ISBN-10/13 checksums are required; spaces/hyphens are removed and `x` becomes `X`.
+The formats remain distinct identities. Individual creation commits book,
+relation, initial price and history together before returning `201`, using one
+product extraction for both metadata and the initial offer.
+Scheduler batches commit each relation separately: scraping/unsupported-store
+failures continue; database/unexpected failures cancel and await all workers and
+the producer through `TaskGroup` (fatal errors may be an `ExceptionGroup`). Prior
+commits and durable window reservations survive; failed publication cannot replay
+a consumed window. Traffic/cooldown persistence remains independent.
+`/api/v1/stores` returns `404`. Archive responses expose `id`; SQL moves rows
+between active/archive tables while memory marks them `archived`.
+
+The single migration head is `0010_merge_audit_scraping`, an empty merge of
+`0007_normalize_isbn` and `0009_store_blocks_daily_windows`. After a verified backup,
+`make migrate` upgrades an empty database or either previous head, running only
+pending migrations. An already applied 0009 calendar/generation is never rebased.
+Downgrade cannot restore ISBN spelling or hourly calendars; application rollback
+needs an explicit cadence decision before restarting its scheduler. This candidate
+has no production migration/deployment verification.
+
+CI runs the full SQLite suite, then the full PostgreSQL-enabled suite using
+disposable PostgreSQL 16 on loopback port 55432. For the same local PostgreSQL pass,
+set `BULK_TEST_POSTGRES_URL` to the isolated `bulk_test` database and
+`SCHEDULE_TEST_POSTGRES_URL` to `bsentinel_schedule_test`, both at
+`127.0.0.1:55432`, and `REQUIRE_TEST_POSTGRES=1`. Missing URLs, unavailable
+databases, or skipped tests fail that mandatory pass. See [scraping policy](docs/scraping-schedule.md).

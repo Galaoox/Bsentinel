@@ -18,6 +18,10 @@ class BookRepositoryPort(Protocol):
 
     async def list(self, *, include_deleted: bool = False) -> list[Book]: ...
 
+    async def list_page(self, *, include_deleted: bool, q: str | None, isbn: str | None,
+                        author: str | None, category: str | None,
+                        page: int, limit: int) -> tuple[list[Book], int]: ...
+
 
 class StoreRepositoryPort(Protocol):
     async def add(self, store: Store) -> None: ...
@@ -47,6 +51,10 @@ class RelationRepositoryPort(Protocol):
 
 class HistoryRepositoryPort(Protocol):
     async def add(self, record: PriceHistoryRecord) -> None: ...
+
+    async def list_page(self, *, book_id: UUID, source: str, state: str | None,
+                        start_date: datetime | None, end_date: datetime | None,
+                        page: int, limit: int) -> tuple[list[PriceHistoryRecord], int]: ...
 
     async def list(
         self,

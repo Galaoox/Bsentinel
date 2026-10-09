@@ -186,7 +186,13 @@ class FailingHttpSession:
         self.error = error
         self.calls: list[str] = []
 
-    async def fetch(self, url: str) -> Response:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+    async def get(self, url: str, **kwargs) -> Response:
         self.calls.append(url)
         raise self.error
 
@@ -464,10 +470,8 @@ async def test_panamericana_does_not_use_internal_gtin_when_isbn_property_is_mis
         extraction_rules=build_default_panamericana_rules(),
     )
 
-    with pytest.raises(ScrapingError) as exc_info:
-        await scraper.extract_book_details(store, PANAMERICANA_URL)
-
-    assert exc_info.value.reason == "isbn_not_found"
+    details = await scraper.extract_book_details(store, PANAMERICANA_URL)
+    assert details.isbn is None
 
 
 def test_price_normalizers_parse_expected_formats():
@@ -478,6 +482,26 @@ def test_price_normalizers_parse_expected_formats():
     assert scraper._normalize_value("price_cop", "41.850") == 41850.0
     assert scraper._normalize_value("price_decimal", "41850.50") == 41850.5
     assert scraper._normalize_value("price_latam", "41850.00") == 41850.0
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('ISBN:978-0-132-35088-4', ['978-0-132-35088-4']),
+    ('ISBN:19780132350884', []), ('ISBN:97801323508840', []),
+    ('ISBN:9780132350885', []),
+])
+def test_custom_isbn_regex_preserves_context_and_rejects_truncated_tokens(text, expected):
+    scraper = ConfiguredStoreScraper()
+    source = {'kind': 'json_ld', 'path': 'isbn', 'regex': r'ISBN:\s*([0-9-]{10,17})',
+              'normalizer': 'isbn_digits'}
+    assert scraper._extract_source_values(source, None, {'isbn': text}) == expected
+
+
+async def test_invalid_isbn_source_uses_valid_fallback():
+    product = {'name': 'Book', 'author': [{'name': 'Author'}], 'isbn': '9780132350885'}
+    html = '<html><body>ISBN: 978-0-132-35088-4</body><script type="application/ld+json">' + json.dumps({'@type': 'Product', **product}) + '</script></html>'
+    scraper = ConfiguredStoreScraper(browser_session=StubBrowserSession(build_response(html)))
+    details = await scraper.extract_book_details(Store(extraction_rules=build_default_buscalibre_rules()), 'https://www.buscalibre.com.co/book')
+    assert details.isbn == '9780132350884'
 
 
 def test_price_normalizers_return_none_for_invalid_values():
@@ -619,11 +643,8 @@ async def test_fetch_page_raises_when_browser_session_is_not_initialized():
     scraper = ConfiguredStoreScraper(browser_session=browser_session)
     store = Store(domain="www.buscalibre.com.co", extraction_rules=build_default_buscalibre_rules())
 
-    with pytest.raises(ScrapingError) as exc_info:
+    with pytest.raises(RuntimeError, match="Stealth browser session is not initialized"):
         await scraper.extract_book_details(store, "https://www.buscalibre.com.co/libro-iliada")
-
-    assert exc_info.value.reason == "fetch_failed"
-    assert exc_info.value.diagnostics["error_type"] == "RuntimeError"
 
 
 @pytest.mark.asyncio
@@ -634,11 +655,19 @@ async def test_http_failure_remains_http_failure_without_browser_fallback(monkey
         browser_start_calls["count"] += 1
 
     monkeypatch.setattr(StealthBrowserSession, "start", fake_browser_start)
-    scraper = ConfiguredStoreScraper(browser_session=FailingHttpSession(TimeoutError("proxy timeout")))
+    from bsentinel.infrastructure.scraping import http_fetcher
+
+    monkeypatch.setattr(http_fetcher, "FetcherSession", lambda **kwargs: FailingHttpSession(TimeoutError("proxy timeout")))
+    runtime = http_fetcher.HttpFetcherSession(timeout=1, retries=1)
+    await runtime.start()
+    scraper = ConfiguredStoreScraper(browser_session=runtime)
     store = Store(domain="www.buscalibre.com.co", extraction_rules=build_default_buscalibre_rules())
 
-    with pytest.raises(ScrapingError) as exc_info:
-        await scraper.extract_book_details(store, "https://www.buscalibre.com.co/libro-iliada")
+    try:
+        with pytest.raises(ScrapingError) as exc_info:
+            await scraper.extract_book_details(store, "https://www.buscalibre.com.co/libro-iliada")
+    finally:
+        await runtime.close()
 
     assert exc_info.value.reason == "fetch_failed"
     assert exc_info.value.diagnostics["error_type"] == "TimeoutError"

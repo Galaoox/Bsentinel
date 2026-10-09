@@ -16,6 +16,26 @@ from alembic import command
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
+
+def pytest_configure(config):
+    import os
+
+    if os.environ.get("REQUIRE_TEST_POSTGRES") == "1":
+        missing = [name for name in ("BULK_TEST_POSTGRES_URL", "SCHEDULE_TEST_POSTGRES_URL")
+                   if not os.environ.get(name)]
+        if missing:
+            raise pytest.UsageError("Mandatory PostgreSQL test URLs missing: " + ", ".join(missing))
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    import os
+
+    report = (yield).get_result()
+    if os.environ.get("REQUIRE_TEST_POSTGRES") == "1" and report.skipped:
+        report.outcome = "failed"
+        report.longrepr = "Mandatory PostgreSQL pass cannot skip: " + item.nodeid
+
 @pytest.fixture
 async def schedule_db(tmp_path):
     import os
@@ -67,12 +87,15 @@ class FakeConfiguredScraper:
                                  await self.scrape_book(store, product_url))
 
     async def extract_book_details(self, store, product_url: str):
+        from urllib.parse import urlsplit
+
+        product_path = urlsplit(product_url).path
         slug = product_url.rstrip("/").split("/")[-1]
         title = slug.replace("-isbn-", " ").replace("-", " ").title()
         isbn = None
         marker = "isbn-"
         if marker in product_url:
-            isbn = product_url.split(marker, 1)[1].split("/")[0].split("-")[0]
+            isbn = product_path.split(marker, 1)[1].split("/")[0].split("-")[0]
         return type(
             "BookDetails",
             (),
@@ -123,7 +146,6 @@ def client(monkeypatch, tmp_path):
 
     monkeypatch.setenv("PERSISTENCE_BACKEND", "sql")
     monkeypatch.setenv("DATABASE_URL", _build_test_db_url(db_path))
-    monkeypatch.setenv("SCRAPING_BROWSER_ENABLED", "false")
 
     bsentinel_pkg = importlib.import_module("bsentinel")
     settings_module = importlib.import_module("bsentinel._settings")

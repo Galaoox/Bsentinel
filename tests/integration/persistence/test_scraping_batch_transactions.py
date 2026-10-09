@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import func, select
 
 from bsentinel.domain.models import BookStoreRelation
+from bsentinel.exceptions import ScrapingError
 from bsentinel.infrastructure.persistence.sqlalchemy import (
     SQLBookRepository,
     SQLHistoryRepository,
@@ -379,7 +380,7 @@ async def test_result_is_atomic_and_revalidates_without_session_during_fetch(
         async def scrape_book(self, store, url):
             assert opened == 0, "SQL session leaked into HTTP"
             if failure == "fetch":
-                raise RuntimeError("fetch fixture")
+                raise ScrapingError("fetch fixture")
             if failure == "cancel":
                 raise asyncio.CancelledError()
             async with factory() as session:

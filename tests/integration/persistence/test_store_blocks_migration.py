@@ -80,7 +80,9 @@ async def test_full_alembic_chain_policy_transition_is_idempotent_on_restart(sch
         url = url.update_query_dict({'options': '-csearch_path=' + schema})
     assert url.host in {None, '127.0.0.1'}
     assert url.port != 5432
-    migration_url = str(url.set(query={})) + '?options=-csearch_path=' + schema if schema else str(url)
+    migration_url = url.set(query={}).render_as_string(hide_password=False)
+    if schema:
+        migration_url += '?options=-csearch_path=' + schema
     monkeypatch.setattr(settings, 'database_url', migration_url)
     config = Config('alembic.ini')
     command.upgrade(config, '0008_add_scraping_traffic')
@@ -100,7 +102,7 @@ async def test_full_alembic_chain_policy_transition_is_idempotent_on_restart(sch
         before = conn.execute(text('SELECT next_check_at,scrape_generation,last_checked,current_price FROM book_store_relations')).one()
         assert before[1] == 6
         assert before[3] == 123
-        assert conn.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0009_store_blocks_daily_windows'
+        assert conn.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0010_merge_audit_scraping'
         assert 'scraping_store_blocks' in inspect(conn).get_table_names()
     command.upgrade(config, 'head')
     with sync.connect() as conn:

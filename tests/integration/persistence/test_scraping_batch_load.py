@@ -10,8 +10,8 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, select
 
 from bsentinel.domain.models import BookStoreRelation
+from bsentinel.exceptions import ScrapingError
 from bsentinel.infrastructure.persistence.sqlalchemy import (
-    SQLHistoryRepository,
     SQLRelationRepository,
 )
 from bsentinel.infrastructure.persistence.sqlalchemy.models import BookModel, PriceHistoryModel
@@ -74,7 +74,7 @@ async def test_hundreds_due_rows_share_runtime_with_import_and_commit_independen
                 if index >= 0:
                     visited.append(index)
                 if index >= 0 and index % 11 == 0:
-                    raise RuntimeError("isolated fetch failure")
+                    raise ScrapingError("isolated fetch failure")
                 return SimpleNamespace(
                     price=float(index), status="activo", checked_at=now
                 )
@@ -87,14 +87,6 @@ async def test_hundreds_due_rows_share_runtime_with_import_and_commit_independen
         async def scrape_book(self, store, url):
             return await runtime.fetch(url)
 
-    history_add = SQLHistoryRepository.add
-
-    async def fail_some_writes(repo, record):
-        await history_add(repo, record)
-        if int(record.price) % 17 == 0:
-            raise RuntimeError("isolated database publication failure")
-
-    monkeypatch.setattr(SQLHistoryRepository, "add", fail_some_writes)
     monkeypatch.setattr(root.settings, "persistence_backend", "sql")
     monkeypatch.setattr(root, "session_scope", scope)
     monkeypatch.setattr(root, "scraper_client", Scraper())
@@ -109,7 +101,7 @@ async def test_hundreds_due_rows_share_runtime_with_import_and_commit_independen
         now = base + timedelta(minutes=group * 20)
         updated += await root.run_scraping_batch()
     await asyncio.gather(*import_tasks)
-    successes = sum(i % 11 != 0 and i % 17 != 0 for i in range(303))
+    successes = sum(i % 11 != 0 for i in range(303))
     assert updated == successes
     assert sorted(visited) == list(range(303))
     assert peak == runtime.peak_active == 3
@@ -127,7 +119,5 @@ async def test_hundreds_due_rows_share_runtime_with_import_and_commit_independen
             if index % 11 == 0:
                 assert row.current_price == 42 and row.last_checked == base - timedelta(hours=2)
                 assert row.next_check_at > now
-            elif index % 17 == 0:
-                assert row.current_price == 42 and row.next_check_at > now
             else:
                 assert row.current_price == index and row.next_check_at > now

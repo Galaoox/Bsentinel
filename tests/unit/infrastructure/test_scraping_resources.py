@@ -1,8 +1,10 @@
 import asyncio
 
 import pytest
+from curl_cffi.curl import CurlError
 
 from bsentinel._settings import Settings
+from bsentinel.exceptions import ScrapingError
 from bsentinel.infrastructure.scraping import http_fetcher
 
 
@@ -73,7 +75,7 @@ async def test_http_fetch_failure_closes_request_and_lifecycle_sessions(monkeypa
         async def get(self, url):
             entered.set()
             if failure == "exception":
-                raise RuntimeError("fixture HTTP failure")
+                raise CurlError("fixture HTTP failure")
             await asyncio.Event().wait()
 
     monkeypatch.setattr(http_fetcher, "FetcherSession", Backend)
@@ -84,11 +86,11 @@ async def test_http_fetch_failure_closes_request_and_lifecycle_sessions(monkeypa
         await asyncio.wait_for(entered.wait(), 1)
         if failure == "cancel":
             task.cancel()
-        expected = asyncio.CancelledError if failure == "cancel" else RuntimeError
+        expected = asyncio.CancelledError if failure == "cancel" else ScrapingError
         with pytest.raises(expected):
             await task
         assert sessions[1].closed
-        assert sessions[1].exit_type is expected
+        assert sessions[1].exit_type is (asyncio.CancelledError if failure == "cancel" else CurlError)
         assert not sessions[0].closed
         assert runtime.is_started
     finally:
@@ -154,14 +156,14 @@ async def test_installed_scrapling_invalid_proxy_fails_closed_without_none_overr
             curl_proxies.append(kwargs.get("proxy"))
             if kwargs.get("proxy") is None:
                 raise AssertionError("Direct request forbidden by fixture")
-            raise RuntimeError("Invalid proxy fixture; connection refused")
+            raise CurlError("Invalid proxy fixture; connection refused", 7)
 
     monkeypatch.setattr(static, "AsyncCurlSession", OfflineCurl)
     monkeypatch.setattr(static._ConfigurationLogic, "_merge_request_args", merge)
     runtime = http_fetcher.HttpFetcherSession(timeout=3, retries=1, proxy=proxy)
     await runtime.start()
     try:
-        with pytest.raises(RuntimeError, match="Invalid proxy fixture"):
+        with pytest.raises(ScrapingError, match="Invalid proxy fixture"):
             await runtime.fetch("https://fixture.invalid/book")
     finally:
         await runtime.close()

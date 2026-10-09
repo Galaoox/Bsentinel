@@ -99,12 +99,33 @@ Feature: API v1 MVP endpoints
   Scenario: Crear y consultar job de archivado
     When envío una petición POST autenticada a "/api/v1/retention/jobs/archive" con body JSON válido
     Then recibo estado 202
-    And la respuesta incluye "job_id"
+    And la respuesta incluye "id"
     When envío una petición GET autenticada a "/api/v1/retention/jobs/archive/{job_id}"
     Then recibo estado 200
 
   Rule: Contrato actual del MVP
     - La API v1 requiere autenticación JWT en los módulos "system", "catalog", "pricing" y "retention".
     - La API activa también expone endpoints de autenticación en "/api/v1/auth".
-    - Los endpoints administrativos de tiendas existen bajo "/api/v1/stores" y requieren permisos de admin.
+    - Las rutas "/api/v1/stores" responden 404; no hay administración pública de tiendas.
     - La persistencia depende de la configuración del entorno y soporta backend SQL además de in-memory.
+
+  Scenario: Fallo del alta individual revierte todos sus datos
+    Given una URL soportada cuyo scraping de precio falla
+    When envío una petición POST autenticada a "/api/v1/catalog/books"
+    Then recibo estado 400 sin índice ni URL de lote en el error
+    And no quedan libros, relaciones ni historiales nuevos
+
+  Scenario: Normalizar y validar la identidad ISBN
+    Given un ISBN-10 o ISBN-13 con checksum válido y separadores
+    When registro el libro desde una URL soportada
+    Then se guarda sin espacios ni guiones y con X mayúscula
+    And los formatos ISBN-10 e ISBN-13 siguen siendo identidades distintas
+    And un ISBN inválido devuelve 400 VALIDATION_ERROR sin escrituras
+
+  Scenario: Archivar conservando IDs y retención
+    Given historiales anteriores al corte y un mínimo N por libro
+    When ejecuto un job de archivado
+    Then los últimos N registros de cada libro siguen activos
+    And SQL mueve los restantes elegibles a price_history_archive conservando IDs
+    And memoria marca esos registros con archived igual a true
+    And un fallo SQL revierte todo el movimiento

@@ -21,20 +21,17 @@ root_app_module = importlib.import_module("bsentinel.infrastructure.api.root_app
 @pytest.mark.asyncio
 async def test_run_scraping_batch_finishes_sql_session_before_returning(monkeypatch):
     commits = []
-
-    async def fake_session_scope():
+    async def scope():
         yield object()
         commits.append(True)
-
-    scraping = SimpleNamespace(scrape_all_active=AsyncMock(return_value=4), relations=SimpleNamespace(list_due=AsyncMock(return_value=[])))
-    monkeypatch.setattr(root_app_module.settings, "persistence_backend", "sql")
-    monkeypatch.setattr(root_app_module, "session_scope", fake_session_scope)
-    monkeypatch.setattr(root_app_module, "_build_sql_services", lambda session: {"scraping": scraping})
-
-    monkeypatch.setattr(root_app_module.scraping_batch, "clock", lambda: datetime(2026, 10, 8, 13, tzinfo=UTC))
+    scraping = SimpleNamespace(relations=SimpleNamespace(list_due=AsyncMock(return_value=[])))
+    monkeypatch.setattr(root_app_module.settings, 'persistence_backend', 'sql')
+    monkeypatch.setattr(root_app_module, 'session_scope', scope)
+    monkeypatch.setattr(root_app_module, '_build_sql_services', lambda session: {'scraping': scraping})
+    monkeypatch.setattr(root_app_module.scraping_batch, 'clock', lambda: datetime(2026, 10, 8, 13, tzinfo=UTC))
     assert await root_app_module.run_scraping_batch() == 0
     assert commits == [True]
-    scraping.scrape_all_active.assert_not_called()
+    scraping.relations.list_due.assert_awaited_once()
 
 
 class RuntimeStub:

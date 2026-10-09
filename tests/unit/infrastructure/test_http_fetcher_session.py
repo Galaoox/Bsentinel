@@ -1,5 +1,7 @@
 import pytest
+from curl_cffi.curl import CurlError
 
+from bsentinel.exceptions import ScrapingError
 from bsentinel.infrastructure.scraping import http_fetcher as http_fetcher_module
 from bsentinel.infrastructure.scraping.http_fetcher import HttpFetcherSession
 
@@ -28,7 +30,7 @@ class DummyFetcherManager:
 
 class FailingFetcherClient:
     async def get(self, url: str, **kwargs):
-        raise RuntimeError("proxy tunnel failed via http://user:pass@proxy.example:8080")
+        raise CurlError("proxy tunnel failed via http://user:pass@proxy.example:8080")
 
 
 class FailingFetcherManager(DummyFetcherManager):
@@ -121,7 +123,7 @@ async def test_http_fetcher_session_sanitizes_proxy_credentials_on_fetch_error(m
     session = HttpFetcherSession(timeout=30, retries=2, proxy="http://user:pass@proxy.example:8080")
     await session.start()
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(ScrapingError) as exc_info:
         await session.fetch("https://example.com/book")
 
     assert "http://***:***@proxy.example:8080" in str(exc_info.value)

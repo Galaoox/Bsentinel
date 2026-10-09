@@ -22,9 +22,9 @@ jobs:
         env:
           POSTGRES_DB: bsentinel_test
           POSTGRES_USER: bsentinel
-          POSTGRES_PASSWORD: bsentinel
+          POSTGRES_PASSWORD: bsentinel_test_only
         ports:
-          - 5432:5432
+          - 127.0.0.1:55432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -53,9 +53,26 @@ jobs:
         run: |
           uv run ruff check .
 
-      - name: Run tests with coverage
+      - name: Run full SQLite suite
         env:
-          DATABASE_URL: postgresql+asyncpg://bsentinel:bsentinel@localhost:5432/bsentinel_test
+          DATABASE_URL: sqlite+aiosqlite:///ci-sqlite.db
+          APP_ENVIRONMENT: local
+        run: |
+          uv run pytest tests/ -q
+
+      - name: Create isolated PostgreSQL test databases
+        env:
+          PGPASSWORD: bsentinel_test_only
+        run: |
+          psql -h 127.0.0.1 -p 55432 -U bsentinel -d bsentinel_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE bulk_test'
+          psql -h 127.0.0.1 -p 55432 -U bsentinel -d bsentinel_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE bsentinel_schedule_test'
+
+      - name: Run full suite with mandatory PostgreSQL cases and coverage
+        env:
+          DATABASE_URL: postgresql+asyncpg://bsentinel:bsentinel_test_only@127.0.0.1:55432/bsentinel_test
+          BULK_TEST_POSTGRES_URL: postgresql+asyncpg://bsentinel:bsentinel_test_only@127.0.0.1:55432/bulk_test
+          SCHEDULE_TEST_POSTGRES_URL: postgresql+asyncpg://bsentinel:bsentinel_test_only@127.0.0.1:55432/bsentinel_schedule_test
+          REQUIRE_TEST_POSTGRES: '1'
           APP_ENVIRONMENT: local
         run: |
           uv run pytest tests/ --cov=bsentinel --cov-report=xml --cov-report=term

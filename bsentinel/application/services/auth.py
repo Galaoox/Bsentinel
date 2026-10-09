@@ -83,8 +83,8 @@ class AuthService:
         )
 
     def _validate_admin_credentials(self, username: str, password: str) -> None:
-        username_matches = compare_digest(username, self.admin_username)
-        password_matches = compare_digest(password, self.admin_password)
+        username_matches = compare_digest(username.encode("utf-8"), self.admin_username.encode("utf-8"))
+        password_matches = compare_digest(password.encode("utf-8"), self.admin_password.encode("utf-8"))
         if not username_matches or not password_matches:
             raise InvalidCredentialsError("Invalid username or password")
 
